@@ -61,7 +61,37 @@ function tempColor(t) {
   return [1.0, 0.4, 0.25];
 }
 
+const placeStyle = (color, summaryLabel) => ({
+  pulse: 0,
+  color: () => color,
+  size: (e) => Math.min(0.085, 0.018 + 0.017 * Math.log10(Math.max(1, e.value))),
+  rank: (e) => e.value,
+  tip: (e) => {
+    const a = (e.detail.articles || [])[0];
+    return [
+      e.detail.place || e.title,
+      Math.round(e.value).toLocaleString() + ' headlines in 24 h' + (a ? ' \u00b7 ' + a.title.slice(0, 70) + (a.title.length > 70 ? '\u2026' : '') : ''),
+    ];
+  },
+  rows: (e) => [
+    ['Location', e.detail.place || e.title],
+    ['Headlines in the last 24 hours', Math.round(e.value).toLocaleString()],
+    ['Updated', ago(e.time)],
+  ],
+  links: (e) => (e.detail.articles || [])
+    .filter((a) => /^https?:\/\//.test(a.url))
+    .map((a) => ({ text: a.title, url: a.url, domain: a.domain })),
+  source: {
+    name: 'Headlines from BBC News, Al Jazeera, The Guardian and France 24 feeds, placed on the map by the city or country named in each one. Placement is approximate and can be wrong.',
+    linkLabel: 'News feeds',
+    prefix: 'about:none',
+  },
+  summary: (n) => summaryLabel + ' \u00b7 ' + n + ' places (news feeds)',
+});
+
 export const STYLE = {
+  news: placeStyle([0.8, 0.92, 1.0], 'News'),
+  politics: placeStyle([0.85, 0.5, 1.0], 'Politics'),
   aviation: {
     pulse: 0,
     color: () => [0.4, 0.8, 1.0],
@@ -335,9 +365,27 @@ export function init(ctx) {
     if (e.country >= 0) dlRow(dl, 'Nearest country', countries[e.country].name);
     dlRow(dl, 'Coordinates', e.lat.toFixed(2) + '\u00b0, ' + e.lon.toFixed(2) + '\u00b0');
     listEl.replaceChildren();
-    evTitleEl.hidden = !st.source;
+    const links = st.links ? st.links(e) : [];
+    evTitleEl.hidden = !(st.source || links.length);
+    for (const l of links) {
+      const row = document.createElement('div');
+      row.className = 'ev';
+      const a = document.createElement('a');
+      a.href = l.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = l.text;
+      row.appendChild(a);
+      if (l.domain) {
+        const d = document.createElement('div');
+        d.className = 'when';
+        d.textContent = l.domain;
+        row.appendChild(d);
+      }
+      listEl.appendChild(row);
+    }
     if (st.source) {
-      evTitleEl.textContent = 'Source';
+      evTitleEl.textContent = links.length ? 'Headlines and source' : 'Source';
       const src = document.createElement('div');
       src.className = 'ev';
       src.append(st.source.name);

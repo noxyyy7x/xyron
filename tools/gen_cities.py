@@ -4,7 +4,7 @@ import urllib.request
 
 URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_populated_places_simple.geojson"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "cities.json"
-TARGET = 5000
+TARGET = 650
 
 with urllib.request.urlopen(URL, timeout=60) as r:
     feats = json.load(r)["features"]

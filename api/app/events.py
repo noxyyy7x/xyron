@@ -44,8 +44,8 @@ LAYERS = [
     {"id": "earthquakes", "label": "Earthquakes", "live": True},
     {"id": "weather", "label": "Weather", "live": True},
     {"id": "aviation", "label": "Aviation", "live": True},
-    {"id": "news", "label": "News", "live": False},
-    {"id": "politics", "label": "Politics", "live": False},
+    {"id": "news", "label": "News", "live": True},
+    {"id": "politics", "label": "Politics", "live": True},
     {"id": "sports", "label": "Sports", "live": False},
     {"id": "football", "label": "Football", "live": False},
 ]
@@ -57,7 +57,7 @@ INSERT INTO events (source, external_id, layer, title, lat, lon, severity,
                     occurred_at, source_updated_at, url, detail)
 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
 ON CONFLICT (source, external_id) DO UPDATE SET
-  title = EXCLUDED.title, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+  title = EXCLUDED.title, lat = EXCLUDED.lat, lon = EXCLUDED.lon, occurred_at = EXCLUDED.occurred_at,
   severity = EXCLUDED.severity, source_updated_at = EXCLUDED.source_updated_at,
   url = EXCLUDED.url, detail = EXCLUDED.detail, fetched_at = now()
 """

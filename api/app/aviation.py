@@ -20,7 +20,7 @@ router = APIRouter()
 
 TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
 STATES_URL = "https://opensky-network.org/api/states/all?extended=1"
-POLL_SECONDS = 120  # a global snapshot costs 4 credits; 720 a day is about 2,900 of the 4,000 allowed
+POLL_SECONDS = 100  # a global snapshot costs 4 credits; 720 a day is about 2,900 of the 4,000 allowed
 
 _token = {"value": None, "expires": 0.0}
 _snapshot = {"body": b'{"time":0,"count":0,"flights":[]}'}

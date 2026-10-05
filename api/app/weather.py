@@ -20,7 +20,7 @@ CURRENT = (
     "weather_code,wind_speed_10m,wind_direction_10m"
 )
 BATCH = 100
-POLL_SECONDS = 14400
+POLL_SECONDS = 7200
 
 # WMO weather interpretation codes used by Open-Meteo
 WMO = {
@@ -94,17 +94,42 @@ def _store(rows):
     return len(rows)
 
 
+def _drop_stale(since):
+    """After a full refresh, remove places that are no longer on the list (they were not refreshed)."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM events WHERE source = 'open-meteo' AND fetched_at < %s", (since,))
+
+
+def _seconds_until_due():
+    """Seconds until the next refresh is due, so a restart does not re-fetch data that is still fresh."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT max(fetched_at) AS t FROM events WHERE source = 'open-meteo'").fetchone()
+    except Exception:
+        return 0
+    if not row or not row["t"]:
+        return 0
+    age = (datetime.now(timezone.utc) - row["t"]).total_seconds()
+    return max(0, int(POLL_SECONDS - age))
+
+
 async def ingest_loop():
     await asyncio.sleep(12)
     cities = load_cities()
+    wait = await asyncio.to_thread(_seconds_until_due)
+    if wait > 0:
+        log.info("weather data is still fresh, next refresh in %d s", wait)
+        await asyncio.sleep(wait)
     while True:
         try:
             total = 0
+            cycle_start = datetime.now(timezone.utc)
             for i in range(0, len(cities), BATCH):
                 chunk = cities[i:i + BATCH]
                 data = await asyncio.to_thread(_fetch, chunk)
                 total += await asyncio.to_thread(_store, weather_rows(chunk, data))
                 await asyncio.sleep(20)
+            await asyncio.to_thread(_drop_stale, cycle_start)
             feed_status["weather"] = {"last_ok": datetime.now(timezone.utc), "error": None}
             log.info("weather: %d cities stored", total)
         except asyncio.CancelledError:
