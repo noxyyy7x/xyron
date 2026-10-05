@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XYRON - Register</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><main>
+<h1>XYRON</h1><p class="sub">Request an account</p>
+<form id="f">
+<label for="email">Email</label>
+<input id="email" type="email" autocomplete="username" required>
+<label for="pw1">Password (at least 14 characters)</label>
+<input id="pw1" type="password" autocomplete="new-password" minlength="14" required>
+<label for="pw2">Repeat password</label>
+<input id="pw2" type="password" autocomplete="new-password" minlength="14" required>
+<button type="submit">Register</button>
+<div id="msg" class="msg"></div>
+</form>
+<p class="sub foot">Already approved? <a href="/login">Sign in</a></p>
+<script src="/static/register.js"></script>
+</main></body></html>

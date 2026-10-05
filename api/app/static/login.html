@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XYRON - Sign in</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><main>
+<h1>XYRON</h1><p class="sub">Sign in</p>
+<form id="f">
+<label for="email">Email</label>
+<input id="email" type="email" autocomplete="username" required>
+<label for="password">Password</label>
+<input id="password" type="password" autocomplete="current-password" required>
+<label for="code">6-digit code</label>
+<input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+<button type="submit">Sign in</button>
+<div id="msg" class="msg"></div>
+</form>
+<p class="sub foot">No account? <a href="/register">Register</a></p>
+<script src="/static/login.js"></script>
+</main></body></html>

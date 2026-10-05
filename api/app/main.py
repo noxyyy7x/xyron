@@ -5,7 +5,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts
+from . import accounts, pages
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(accounts.router)
+pages.setup(app)
 
 
 @app.middleware("http")
