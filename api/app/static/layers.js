@@ -264,6 +264,62 @@ export function sportList(events) {
   return [...m.values()].sort((a, b) => b.live - a.live || b.n - a.n);
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+// One colour per layer, matching what it shows. Aviation is left out on purpose and keeps the default look.
+export const CHIP_COLORS = {
+  earthquakes: '#ff5a36', weather: '#36d6e7', news: '#a5c8ff', politics: '#b07cff', sports: '#ffc83d', football: '#2ee57a',
+};
+// Simple icons on a 24 by 24 grid. Lines, except the plane, which is solid.
+const CHIP_ICONS = {
+  earthquakes: { d: ['M2 12h4l2.5-6 4 12 3-9 1.5 3H22'] },
+  weather: { d: ['M7 18a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 17.1 9.2 3.9 3.9 0 0 1 17 18H7z'] },
+  news: { d: ['M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5V5z', 'M16 9h3.5v8.5a1.5 1.5 0 0 1-1.5 1.5H16', 'M7 9h6M7 12.5h6M7 16h4'] },
+  politics: { d: ['M3 9.5 12 4l9 5.5H3z', 'M6 12v6M10 12v6M14 12v6M18 12v6', 'M3.5 20.5h17'] },
+  sports: { d: ['M8 4h8v5a4 4 0 0 1-8 0V4z', 'M8 6H5v1a3 3 0 0 0 3 3', 'M16 6h3v1a3 3 0 0 1-3 3', 'M12 13v4', 'M9 20.5h6', 'M10 17h4'] },
+  football: { circles: [[12, 12, 9]], d: ['M12 8.3l3.3 2.4-1.3 3.9h-4l-1.3-3.9z', 'M12 8.3V3.2', 'M15.3 10.7l4.6-1.5', 'M14 14.6l2.9 3.9', 'M10 14.6l-2.9 3.9', 'M8.7 10.7 4.1 9.2'] },
+  aviation: { fill: true, d: ['M12 2c.9 0 1.5.8 1.5 1.7V9l8 5v2.2l-8-2.4V19l2 1.5V22L12 21l-3.5 1v-1.5l2-1.5v-5.2l-8 2.4V14l8-5V3.7C10.5 2.8 11.1 2 12 2z'] },
+};
+export function chipIcon(id) {
+  const spec = CHIP_ICONS[id];
+  if (!spec) return '';
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'ico');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('fill', spec.fill ? 'currentColor' : 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', spec.fill ? '0' : '1.8');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  for (const [cx, cy, r] of spec.circles || []) {
+    const c = document.createElementNS(SVG_NS, 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
+    svg.appendChild(c);
+  }
+  for (const d of spec.d) {
+    const p = document.createElementNS(SVG_NS, 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+}
+function hexRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+export function rgbHex(rgb) {
+  return '#' + rgb.map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
+}
+// give a chip its colour; no colour means the chip keeps the default look
+export function paintChip(b, hex) {
+  if (!hex) return;
+  b.classList.add('coded');
+  b.style.setProperty('--c', hex);
+  b.style.setProperty('--cb', hexRgba(hex, 0.45));
+  b.style.setProperty('--cbg', hexRgba(hex, 0.16));
+  b.style.setProperty('--cg', hexRgba(hex, 0.42));
+}
+
 export function init(ctx) {
   const { THREE, globe, camera, renderer, canvas, nearestCountry, countries, deselect, flyTo, openPanel } = ctx;
   const chipsEl = document.getElementById('layers');
@@ -334,7 +390,8 @@ export function init(ctx) {
       b.type = 'button';
       b.className = 'chip' + (l.live && enabled.has(l.id) ? ' on' : '') + (l.id === 'football' ? ' football' : '');
       b.disabled = !l.live;
-      b.append((l.id === 'football' ? '\u26bd ' : '') + l.label);
+      paintChip(b, CHIP_COLORS[l.id]);
+      b.append(chipIcon(l.id), l.label);
       const s = document.createElement('small');
       s.textContent = l.live ? String(l.count) : 'soon';
       b.append(s);
@@ -363,6 +420,7 @@ export function init(ctx) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip small' + (sportsOff.has(s.id) ? '' : ' on');
+      paintChip(b, rgbHex(SPORT_COLORS[s.id] || [0.8, 0.9, 1.0]));
       b.append(s.label);
       const c = document.createElement('small');
       c.textContent = (s.live ? s.live + ' live \u00b7 ' : '') + s.n;

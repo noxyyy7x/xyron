@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 STATIC = Path(__file__).parent / "static"
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data:; connect-src 'self'; form-action 'self'; "
+    "img-src 'self' data:; font-src 'self'; manifest-src 'self'; connect-src 'self'; form-action 'self'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
 
