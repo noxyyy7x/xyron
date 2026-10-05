@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 import psycopg
@@ -6,13 +5,13 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
+from . import accounts
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
+from .deps import LOGIN_OK_STATUS, client_ip, current_user
 
-log = logging.getLogger("xyron")
 COOKIE = "xyron_session"
-LOGIN_OK_STATUS = ("approved", "active")
 
 
 @asynccontextmanager
@@ -22,6 +21,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.include_router(accounts.router)
 
 
 @app.middleware("http")
@@ -33,10 +33,6 @@ async def security_headers(request: Request, call_next):
     if request.url.path.startswith(("/auth", "/admin")):
         resp.headers["Cache-Control"] = "no-store"
     return resp
-
-
-def _ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
 
 
 @app.get("/health")
@@ -64,7 +60,7 @@ class LoginIn(BaseModel):
 
 @app.post("/auth/login")
 def login(body: LoginIn, request: Request, response: Response):
-    ip = _ip(request)
+    ip = client_ip(request)
     email = body.email.lower()
     acct_key, ip_key = f"rl:login:acct:{email}", f"rl:login:ip:{ip}"
 
@@ -75,7 +71,6 @@ def login(body: LoginIn, request: Request, response: Response):
     with get_conn() as conn:
         user = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
 
-    # always run the password check so timing doesn't reveal whether the account exists
     pw_ok = sec.verify_password(user["password_hash"] if user else sec.DUMMY_HASH, body.password)
     ok = bool(user and pw_ok and user["status"] in LOGIN_OK_STATUS)
     if ok:
@@ -102,29 +97,6 @@ def login(body: LoginIn, request: Request, response: Response):
     return {"email": user["email"], "role": user["role"]}
 
 
-def current_user(xyron_session: str | None = Cookie(default=None)):
-    if not xyron_session:
-        raise HTTPException(401, "Not authenticated")
-    uid = sec.session_user_id(xyron_session)
-    if uid is None:
-        raise HTTPException(401, "Not authenticated")
-    with get_conn() as conn:
-        user = conn.execute(
-            "SELECT id, email, role, status FROM users WHERE id = %s", (uid,)
-        ).fetchone()
-    if not user or user["status"] not in LOGIN_OK_STATUS:
-        raise HTTPException(401, "Not authenticated")
-    return user
-
-
-def require_role(*roles: str):
-    def checker(user=Depends(current_user)):
-        if user["role"] not in roles:
-            raise HTTPException(403, "Forbidden")
-        return user
-    return checker
-
-
 @app.get("/auth/me")
 def me(user=Depends(current_user)):
     return {"email": user["email"], "role": user["role"], "status": user["status"]}
@@ -135,15 +107,6 @@ def logout(request: Request, response: Response, user=Depends(current_user),
            xyron_session: str | None = Cookie(default=None)):
     if xyron_session:
         sec.destroy_session(xyron_session)
-    audit("logout", user_id=user["id"], ip=_ip(request))
+    audit("logout", user_id=user["id"], ip=client_ip(request))
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
-
-
-@app.get("/admin/users")
-def list_users(user=Depends(require_role("owner", "admin"))):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, email, role, status, created_at, last_login_at FROM users ORDER BY id"
-        ).fetchall()
-    return rows

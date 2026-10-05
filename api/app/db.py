@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip TEXT,
   detail JSONB NOT NULL DEFAULT '{}'
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_shown BOOLEAN NOT NULL DEFAULT false;
+UPDATE users SET email_verified = true, totp_shown = true WHERE role = 'owner';
+CREATE TABLE IF NOT EXISTS email_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ
+);
 """
 
 
