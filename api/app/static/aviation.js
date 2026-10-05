@@ -95,6 +95,53 @@ export function advance(latRad, lonRad, trackRad, distRad) {
   return [lat2, lon2];
 }
 
+// ----- great-circle maths for routes (pure functions, so they can be tested) -----
+export function toUnit(latDeg, lonDeg) {
+  const la = latDeg * DEG;
+  const lo = lonDeg * DEG;
+  return [Math.cos(la) * Math.sin(lo), Math.sin(la), Math.cos(la) * Math.cos(lo)];
+}
+export function angleBetween(a, b) {
+  return Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])));
+}
+export function distanceKm(latA, lonA, latB, lonB) {
+  return (angleBetween(toUnit(latA, lonA), toUnit(latB, lonB)) * EARTH_M) / 1000;
+}
+export function slerp(a, b, t) {
+  const w = angleBetween(a, b);
+  const s = Math.sin(w);
+  if (s < 1e-6) return a.slice();
+  const k1 = Math.sin((1 - t) * w) / s;
+  const k2 = Math.sin(t * w) / s;
+  return [k1 * a[0] + k2 * b[0], k1 * a[1] + k2 * b[1], k1 * a[2] + k2 * b[2]];
+}
+// how far above the surface the route line sits at fraction s (0..1) of the whole journey
+export function arcHeight(s, span) {
+  return 1.01 + 0.012 * Math.sin(Math.PI * s) * Math.min(1, span / 1.2);
+}
+export function fillArc(out, a, b, s0, s1, span, steps) {
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps;
+    const p = slerp(a, b, u);
+    const h = arcHeight(s0 + (s1 - s0) * u, span);
+    out[3 * i] = p[0] * h;
+    out[3 * i + 1] = p[1] * h;
+    out[3 * i + 2] = p[2] * h;
+  }
+}
+// progress along the route, and a rough time left at the current ground speed
+export function routeProgress(o, d, p, speedMs) {
+  const flown = (angleBetween(o, p) * EARTH_M) / 1000;
+  const remaining = (angleBetween(p, d) * EARTH_M) / 1000;
+  const total = flown + remaining;
+  return {
+    flownKm: flown,
+    remainingKm: remaining,
+    fraction: total > 0 ? flown / total : 0,
+    etaMin: speedMs > 50 ? (remaining * 1000) / speedMs / 60 : null,
+  };
+}
+
 // Which plane (index) is under the pointer, or -1. Hidden planes and planes on the far side never match.
 export function hitPlanes(THREE, pos, n, globe, camera, rect, x, y, maxPx, show) {
   globe.updateWorldMatrix(true, false);
@@ -263,6 +310,34 @@ export function init(ctx) {
   let lastDetail = 0;
   const filters = { ...DEFAULT_FILTERS };
 
+  // ----- route arcs for the selected plane -----
+  const ARC_STEPS = 48;
+  const flownPos = new Float32Array((ARC_STEPS + 1) * 3);
+  const remainPos = new Float32Array((ARC_STEPS + 1) * 3);
+  const flownGeo = new THREE.BufferGeometry();
+  flownGeo.setAttribute('position', new THREE.BufferAttribute(flownPos, 3));
+  const remainGeo = new THREE.BufferGeometry();
+  remainGeo.setAttribute('position', new THREE.BufferAttribute(remainPos, 3));
+  const flownLine = new THREE.Line(flownGeo, new THREE.LineBasicMaterial({ color: 0xffc847, transparent: true, opacity: 0.95, depthWrite: false }));
+  const remainLine = new THREE.Line(remainGeo, new THREE.LineDashedMaterial({ color: 0x8ce0ff, dashSize: 0.012, gapSize: 0.012, transparent: true, opacity: 0.85, depthWrite: false }));
+  const apPos = new Float32Array(6);
+  const apColor = new Float32Array([0.4, 0.9, 0.6, 1.0, 0.4, 0.4]);
+  const apGeo = new THREE.BufferGeometry();
+  apGeo.setAttribute('position', new THREE.BufferAttribute(apPos, 3));
+  apGeo.setAttribute('color', new THREE.BufferAttribute(apColor, 3));
+  const dotCanvas = document.createElement('canvas');
+  dotCanvas.width = dotCanvas.height = 32;
+  const dctx = dotCanvas.getContext('2d');
+  dctx.beginPath();
+  dctx.arc(16, 16, 14, 0, Math.PI * 2);
+  dctx.fillStyle = '#fff';
+  dctx.fill();
+  const apPoints = new THREE.Points(apGeo, new THREE.PointsMaterial({
+    size: 0.03, vertexColors: true, map: new THREE.CanvasTexture(dotCanvas), sizeAttenuation: true, transparent: true, depthWrite: false, alphaTest: 0.1,
+  }));
+  for (const o of [flownLine, remainLine, apPoints]) { o.visible = false; o.frustumCulled = false; globe.add(o); }
+  let routeInfo = null; // null, or { state: 'loading' | 'ok' | 'none' | 'error', route, aircraft }
+
   // ----- filter panel -----
   const stage = document.getElementById('stage');
   const btn = el('button', { id: 'filterbtn', className: 'chip', type: 'button', hidden: true, textContent: 'Filters' });
@@ -339,7 +414,15 @@ export function init(ctx) {
       results.append(row);
     }
     if (matches.length > 12) results.append(el('div', { className: 'more', textContent: '+ ' + (matches.length - 12).toLocaleString() + ' more shown on the globe' }));
-    if (filters.q.trim() && !matches.length) results.append(el('div', { className: 'more', textContent: 'No aircraft match that search right now' }));
+    if (filters.q.trim() && !matches.length) {
+      const others = activeCount() - 1;
+      results.append(el('div', {
+        className: 'more',
+        textContent: others > 0
+          ? 'No aircraft match. ' + others + (others > 1 ? ' other filters are' : ' other filter is') + ' also active; try Reset filters.'
+          : 'No aircraft match right now. That airline may have nothing in the air, or may not be in our airline list. Try its 3-letter callsign code (like UAE) or a flight number (like EK203).',
+      }));
+    }
   }
 
   function fillSelect(sel, items, current) {
@@ -517,15 +600,17 @@ export function init(ctx) {
   function renderDetail() {
     if (selected < 0) return;
     const f = meta[selected];
-    const a = airlineOf(f[1], air);
+    const a = airlineOf(f[1], air) || routeAirline();
     document.getElementById('pname').textContent = name(selected);
     const dl = document.getElementById('pinfo');
     dl.replaceChildren();
     if (a) dlRow(dl, 'Airline', a.name + (a.country ? ' (' + a.country + ')' : ''));
     if (f[1]) dlRow(dl, 'Callsign', f[1]);
     if (a && a.iata) dlRow(dl, 'Flight number', a.iata + f[1].slice(3));
+    routeRows(dl);
     dlRow(dl, 'Transponder (ICAO24)', f[0].toUpperCase());
     if (f[9]) dlRow(dl, 'Registered in', f[9]);
+    aircraftRows(dl);
     dlRow(dl, 'Aircraft type class', CATEGORY[f[8]] || 'Not reported');
     dlRow(dl, 'Altitude', Math.round(f[4] * FT).toLocaleString() + ' ft (' + Math.round(f[4]).toLocaleString() + ' m)');
     dlRow(dl, 'Ground speed', Math.round(f[5] * KT) + ' kt (' + Math.round(f[5] * 3.6) + ' km/h)');
@@ -539,8 +624,95 @@ export function init(ctx) {
     title.textContent = 'Source';
     list.replaceChildren(el('div', {
       className: 'ev',
-      textContent: 'Positions from The OpenSky Network (opensky-network.org); between updates they are estimated from speed and heading. Airline names from the OpenFlights database, which is community-maintained and may be out of date.',
+      textContent: 'Positions from The OpenSky Network (opensky-network.org); between updates they are estimated from speed and heading. Routes and aircraft details come from adsbdb.com, matched by callsign, and can be wrong or out of date. Airline names from the community-maintained OpenFlights database.',
     }));
+  }
+
+  // ----- route and aircraft details for the selected plane -----
+  function routeAirline() {
+    const a = routeInfo && routeInfo.route && routeInfo.route.airline;
+    return a && a.name ? { icao: a.icao || '', name: a.name, iata: a.iata || '', country: a.country || '' } : null;
+  }
+
+  function hideArcs() {
+    flownLine.visible = false;
+    remainLine.visible = false;
+    apPoints.visible = false;
+  }
+
+  function currentProgress() {
+    const r = routeInfo.route;
+    const o = toUnit(r.origin.lat, r.origin.lon);
+    const d = toUnit(r.destination.lat, r.destination.lon);
+    const p = [pos[3 * selected] / LIFT, pos[3 * selected + 1] / LIFT, pos[3 * selected + 2] / LIFT];
+    return { o, d, p, prog: routeProgress(o, d, p, vel[selected]) };
+  }
+
+  function updateArcs() {
+    if (selected < 0 || !routeInfo || routeInfo.state !== 'ok') { hideArcs(); return; }
+    const { o, d, p, prog } = currentProgress();
+    const span = angleBetween(o, d);
+    const f = prog.fraction;
+    fillArc(flownPos, o, p, 0, f, span, ARC_STEPS);
+    fillArc(remainPos, p, d, f, 1, span, ARC_STEPS);
+    const ho = arcHeight(0, span);
+    const hd = arcHeight(1, span);
+    apPos.set([o[0] * ho, o[1] * ho, o[2] * ho, d[0] * hd, d[1] * hd, d[2] * hd]);
+    flownGeo.attributes.position.needsUpdate = true;
+    remainGeo.attributes.position.needsUpdate = true;
+    apGeo.attributes.position.needsUpdate = true;
+    remainLine.computeLineDistances();
+    flownLine.visible = true;
+    remainLine.visible = true;
+    apPoints.visible = true;
+  }
+
+  async function loadRoute(i) {
+    const f = meta[i];
+    const icao = f[0];
+    routeInfo = { state: 'loading' };
+    renderDetail();
+    try {
+      const r = await fetch('/api/flight/' + encodeURIComponent(icao) + (f[1] ? '?callsign=' + encodeURIComponent(f[1]) : ''), { credentials: 'same-origin' });
+      if (selectedIcao !== icao) return; // the user has moved on
+      if (!r.ok) { routeInfo = { state: 'error' }; renderDetail(); return; }
+      const j = await r.json();
+      if (selectedIcao !== icao) return;
+      routeInfo = { state: j.route ? 'ok' : 'none', route: j.route, aircraft: j.aircraft };
+      updateArcs();
+      renderDetail();
+    } catch (e) {
+      if (selectedIcao === icao) { routeInfo = { state: 'error' }; renderDetail(); }
+    }
+  }
+
+  function place(p) {
+    return (p.name || p.icao || 'Unknown airport') + ' (' + (p.city ? p.city + ', ' : '') + (p.country || '') + ')';
+  }
+  function routeRows(dl) {
+    if (!routeInfo) return;
+    if (routeInfo.state === 'loading') { dlRow(dl, 'Route', 'Looking up\u2026'); return; }
+    if (routeInfo.state === 'error') { dlRow(dl, 'Route', 'Lookup failed, try again later'); return; }
+    if (routeInfo.state === 'none') { dlRow(dl, 'Route', 'Not available for this callsign (private, military and unscheduled flights often have none)'); return; }
+    const r = routeInfo.route;
+    dlRow(dl, 'Route', (r.origin.iata || r.origin.icao || '?') + ' \u2192 ' + (r.destination.iata || r.destination.icao || '?'));
+    dlRow(dl, 'From', place(r.origin));
+    dlRow(dl, 'To', place(r.destination));
+    if (r.via) dlRow(dl, 'Via', place(r.via));
+    const { prog } = currentProgress();
+    dlRow(dl, 'Progress', Math.round(prog.fraction * 100) + '% \u2014 ' + Math.round(prog.flownKm).toLocaleString() + ' km flown, ' + Math.round(prog.remainingKm).toLocaleString() + ' km to go');
+    if (prog.etaMin !== null) {
+      const m = Math.round(prog.etaMin);
+      dlRow(dl, 'Estimated time left', (m >= 60 ? Math.floor(m / 60) + ' h ' : '') + (m % 60) + ' min (rough estimate)');
+    }
+  }
+  function aircraftRows(dl) {
+    const ac = routeInfo && routeInfo.aircraft;
+    if (!ac) return;
+    const kind = [ac.manufacturer, ac.type].filter(Boolean).join(' ');
+    if (kind) dlRow(dl, 'Aircraft', kind + (ac.icao_type ? ' (' + ac.icao_type + ')' : ''));
+    if (ac.registration) dlRow(dl, 'Registration', ac.registration);
+    if (ac.owner) dlRow(dl, 'Operator / owner', ac.owner);
   }
 
   function select(i) {
@@ -549,9 +721,11 @@ export function init(ctx) {
     selectedIcao = meta[i][0];
     sel[i] = 1;
     points.geometry.attributes.aSel.needsUpdate = true;
+    routeInfo = null;
     renderDetail();
     openPanel();
     flyTo(curLat[i] / DEG, curLon[i] / DEG, 2.4);
+    loadRoute(i);
   }
 
   function clearSelection() {
@@ -561,6 +735,8 @@ export function init(ctx) {
     }
     selected = -1;
     selectedIcao = null;
+    routeInfo = null;
+    hideArcs();
   }
 
   function hit(x, y) {
@@ -589,7 +765,7 @@ export function init(ctx) {
       material.uniforms.uPx.value = bufSize.y / (2 * Math.tan((camera.fov * DEG) / 2));
       material.uniforms.uAspect.value = camera.aspect;
       if (now - lastTick >= TICK_MS) { lastTick = now; tick(Date.now()); }
-      if (selected >= 0 && now - lastDetail >= 1000) { lastDetail = now; renderDetail(); }
+      if (selected >= 0 && now - lastDetail >= 1000) { lastDetail = now; updateArcs(); renderDetail(); }
     },
   };
 }

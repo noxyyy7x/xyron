@@ -2,13 +2,14 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from .deps import current_user
@@ -123,3 +124,98 @@ async def ingest_loop():
 @router.get("/api/flights")
 def flights(user=Depends(current_user)):
     return Response(content=_snapshot["body"], media_type="application/json")
+
+
+# ---------- route and aircraft details for one selected plane (adsbdb.com, free, no key) ----------
+_detail_cache = {}
+_ICAO24_RE = re.compile(r"^[0-9a-fA-F]{6}$")
+_CALLSIGN_RE = re.compile(r"^[A-Za-z0-9]{1,8}$")
+
+
+def _adsbdb(path):
+    req = urllib.request.Request(
+        "https://api.adsbdb.com/v0/" + path, headers={"User-Agent": "XYRON/1.0 (private dashboard)"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"response": "unknown"}
+        raise
+
+
+def _airport(a):
+    if not isinstance(a, dict):
+        return None
+    lat, lon = a.get("latitude"), a.get("longitude")
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return {
+        "name": a.get("name"), "city": a.get("municipality"), "country": a.get("country_name"),
+        "iata": a.get("iata_code"), "icao": a.get("icao_code"), "lat": lat, "lon": lon,
+    }
+
+
+def clean_route(j):
+    resp = (j or {}).get("response")
+    fr = resp.get("flightroute") if isinstance(resp, dict) else None
+    if not isinstance(fr, dict):
+        return None
+    origin, dest = _airport(fr.get("origin")), _airport(fr.get("destination"))
+    if not origin or not dest:
+        return None
+    al = fr.get("airline") if isinstance(fr.get("airline"), dict) else None
+    return {
+        "callsign": fr.get("callsign"),
+        "airline": {k: al.get(k) for k in ("name", "icao", "iata", "country")} if al else None,
+        "origin": origin, "destination": dest, "via": _airport(fr.get("midpoint")),
+    }
+
+
+def clean_aircraft(j):
+    resp = (j or {}).get("response")
+    ac = resp.get("aircraft") if isinstance(resp, dict) else None
+    if not isinstance(ac, dict):
+        return None
+    photo = ac.get("url_photo")
+    return {
+        "type": ac.get("type"), "icao_type": ac.get("icao_type"), "manufacturer": ac.get("manufacturer"),
+        "registration": ac.get("registration"), "owner": ac.get("registered_owner"),
+        "country": ac.get("registered_owner_country_name"),
+        "photo": photo if isinstance(photo, str) and photo.startswith("https://") else None,
+    }
+
+
+@router.get("/api/flight/{icao24}")
+def flight_detail(icao24: str, callsign: str = "", user=Depends(current_user)):
+    if not _ICAO24_RE.match(icao24):
+        raise HTTPException(400, "Invalid transponder code")
+    callsign = callsign.strip().upper()
+    if callsign and not _CALLSIGN_RE.match(callsign):
+        raise HTTPException(400, "Invalid callsign")
+    key = (icao24.lower(), callsign)
+    now = time.time()
+    cached = _detail_cache.get(key)
+    if cached and now < cached[0]:
+        return cached[1]
+    result = {"route": None, "aircraft": None}
+    ok = True
+    if callsign:
+        try:
+            result["route"] = clean_route(_adsbdb("callsign/" + urllib.parse.quote(callsign)))
+        except Exception as e:
+            ok = False
+            log.warning("route lookup failed: %s", type(e).__name__)
+    try:
+        result["aircraft"] = clean_aircraft(_adsbdb("aircraft/" + icao24.lower()))
+    except Exception as e:
+        ok = False
+        log.warning("aircraft lookup failed: %s", type(e).__name__)
+    ttl = (12 * 3600 if (result["route"] or result["aircraft"]) else 1800) if ok else 60
+    if len(_detail_cache) > 5000:
+        _detail_cache.clear()
+    _detail_cache[key] = (now + ttl, result)
+    return result
