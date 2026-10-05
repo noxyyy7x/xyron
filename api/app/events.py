@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS events_layer_time_idx ON events (layer, occurred_at D
 LAYERS = [
     {"id": "earthquakes", "label": "Earthquakes", "live": True},
     {"id": "weather", "label": "Weather", "live": True},
-    {"id": "aviation", "label": "Aviation", "live": False},
+    {"id": "aviation", "label": "Aviation", "live": True},
     {"id": "news", "label": "News", "live": False},
     {"id": "politics", "label": "Politics", "live": False},
     {"id": "sports", "label": "Sports", "live": False},
@@ -149,6 +149,8 @@ def layers(user=Depends(current_user)):
         item["count"] = counts.get(layer["id"], 0)
         st = feed_status.get(layer["id"]) or {}
         item["updated"] = st["last_ok"].isoformat() if st.get("last_ok") else None
+        if st.get("count") is not None:
+            item["count"] = st["count"]
         out.append(item)
     return out
 

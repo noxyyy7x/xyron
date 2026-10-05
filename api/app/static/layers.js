@@ -62,6 +62,16 @@ function tempColor(t) {
 }
 
 export const STYLE = {
+  aviation: {
+    pulse: 0,
+    color: () => [0.4, 0.8, 1.0],
+    size: () => 0.02,
+    rank: () => 0,
+    tip: (e) => [e.title, ''],
+    rows: () => [],
+    source: null,
+    summary: (n, l) => 'Aircraft \u00b7 ' + ((l && l.count) || 0) + ' airborne (OpenSky Network)',
+  },
   earthquakes: {
     pulse: 1,
     color: (e) => quakeColor(e.value),
@@ -209,6 +219,10 @@ export function init(ctx) {
     globe.add(points);
   }
 
+  function broadcast() {
+    window.dispatchEvent(new CustomEvent('xyron-layers', { detail: [...enabled] }));
+  }
+
   function renderChips() {
     chipsEl.replaceChildren();
     for (const l of layers) {
@@ -224,6 +238,7 @@ export function init(ctx) {
         b.addEventListener('click', () => {
           if (enabled.has(l.id)) enabled.delete(l.id); else enabled.add(l.id);
           saveEnabled(enabled);
+          broadcast();
           renderChips();
           rebuildMarkers();
           renderList();
@@ -238,7 +253,7 @@ export function init(ctx) {
   function renderStatus() {
     const on = layers.filter((l) => l.live && enabled.has(l.id));
     if (!on.length) { statusEl.textContent = layers.length ? 'No live layers switched on' : ''; return; }
-    const parts = on.map((l) => styleOf(l.id).summary(events.filter((e) => e.layer === l.id).length));
+    const parts = on.map((l) => styleOf(l.id).summary(events.filter((e) => e.layer === l.id).length, l));
     const stamps = on.map((l) => l.updated).filter(Boolean).sort();
     let t = parts.join('  |  ');
     if (stamps.length) t += ' \u00b7 updated ' + new Date(stamps[stamps.length - 1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -364,6 +379,7 @@ export function init(ctx) {
       rebuildMarkers();
       renderList();
       renderStatus();
+      broadcast();
     } catch (err) {
       if (err.message !== 'auth') statusEl.textContent = 'Live data unavailable right now';
     }

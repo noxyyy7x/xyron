@@ -40,3 +40,18 @@ dd { margin: 0; font-size: 16px; }
 .tip-title { font-weight: 600; margin-bottom: 2px; }
 .tip-hint { color: #8b949e; font-size: 12px; margin-top: 2px; }
 .ev { cursor: pointer; }
+#filterbtn { position: absolute; left: 14px; top: calc(env(safe-area-inset-top, 0px) + 96px); z-index: 4; }
+#filterbtn[hidden], .avpanel[hidden] { display: none; }
+.avpanel { position: absolute; left: 14px; top: calc(env(safe-area-inset-top, 0px) + 136px); z-index: 5; width: min(320px, calc(100% - 28px)); max-height: calc(100% - 220px); overflow: auto; padding: 12px 14px; background: #0d1117f2; border: 1px solid #30363d; border-radius: 10px; backdrop-filter: blur(6px); }
+.avhead { display: flex; align-items: center; justify-content: space-between; }
+.avx { background: transparent; border: 0; color: #8b949e; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.avfield { margin-top: 10px; }
+.avfield label { display: block; margin-bottom: 4px; color: #8b949e; font-size: 12px; }
+.avpanel input[type=search], .avpanel select { width: 100%; box-sizing: border-box; padding: 8px; background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; font-size: 14px; }
+.avpanel .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #c9d1d9; font-size: 14px; }
+.avpanel .check input { width: auto; }
+.avpanel button.small { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.avresults .row { padding: 7px 4px; border-top: 1px solid #21262d; cursor: pointer; font-size: 13px; }
+.avresults .row:hover { background: #161b22; }
+.avresults .more { padding: 6px 4px; color: #8b949e; font-size: 12px; }
+.avcount { margin: 12px 0 8px; color: #8b949e; font-size: 12px; }

@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 
 import psycopg
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts, events, pages, weather
+from . import accounts, aviation, events, pages, weather
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(events.ingest_loop()),
         asyncio.create_task(weather.ingest_loop()),
+        asyncio.create_task(aviation.ingest_loop()),
     ]
     yield
     for task in tasks:
@@ -31,7 +33,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(accounts.router)
 app.include_router(events.router)
+app.include_router(aviation.router)
 pages.setup(app)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.middleware("http")

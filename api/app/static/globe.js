@@ -136,6 +136,7 @@ function placeMarker(m, i) {
 
 // ---------- selection and hover (one dot at a time) ----------
 let layerHooks = {};
+let aviationHooks = {};
 let hoverDot = -1;
 let selDot = -1;
 let selC = -1;
@@ -230,6 +231,7 @@ function select(i) {
   const prev = selDot;
   selDot = i;
   selC = i >= 0 ? data.c[i] : -1;
+  if (aviationHooks.clear) aviationHooks.clear();
   paintDot(prev);
   paintDot(i);
   placeMarker(selMarker, i);
@@ -302,6 +304,7 @@ function release(e) {
   if (pointers.size < 2) lastPinch = 0;
   if (pointers.size === 0 && e.type === 'pointerup' && moved < 8) {
     if (layerHooks.onClick && layerHooks.onClick(e.clientX, e.clientY)) return; // an event marker was tapped
+    if (aviationHooks.onClick && aviationHooks.onClick(e.clientX, e.clientY)) return; // an aircraft was tapped
     select(pick(e.clientX, e.clientY));
   }
 }
@@ -353,6 +356,15 @@ try {
 } catch (e) {
   console.error('Live layers failed to load', e);
 }
+try {
+  const mod = await import('/static/aviation.js');
+  aviationHooks = mod.init({
+    THREE, globe, camera, renderer, canvas,
+    deselect: () => select(-1), flyTo, openPanel,
+  }) || {};
+} catch (e) {
+  console.error('Aviation layer failed to load', e);
+}
 
 // ---------- render loop ----------
 let last = performance.now();
@@ -361,12 +373,15 @@ function frame(now) {
   last = now;
 
   if (pendingHover && pointers.size === 0) {
-    const overEvent = layerHooks.onHover ? layerHooks.onHover(pendingHover[0], pendingHover[1]) : false;
+    const overMarker = layerHooks.onHover ? layerHooks.onHover(pendingHover[0], pendingHover[1]) : false;
+    const overPlane = !overMarker && aviationHooks.onHover ? aviationHooks.onHover(pendingHover[0], pendingHover[1]) : false;
+    const overEvent = overMarker || overPlane;
     setHover(overEvent ? -1 : pick(pendingHover[0], pendingHover[1]));
     if (overEvent) canvas.style.cursor = 'pointer';
   }
   pendingHover = null;
   if (layerHooks.onFrame) layerHooks.onFrame(now, dt);
+  if (aviationHooks.onFrame) aviationHooks.onFrame(now, dt);
 
   if (flying) {
     const dy = wrap(tY - globe.rotation.y);
