@@ -2,3 +2,7 @@ fastapi
 uvicorn[standard]
 psycopg[binary]
 redis
+argon2-cffi
+pyotp
+cryptography
+email-validator
