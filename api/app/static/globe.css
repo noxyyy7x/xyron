@@ -25,3 +25,13 @@ dd { margin: 0; font-size: 16px; }
   #panel { position: fixed; left: 0; right: 0; bottom: 0; width: auto; height: auto; max-height: 46vh; max-height: 46dvh; padding: 16px 18px calc(env(safe-area-inset-bottom, 0px) + 18px); border-left: 0; border-top: 1px solid #30363d; border-radius: 14px 14px 0 0; box-shadow: 0 -8px 30px #000a; }
   #close { top: 8px; }
 }
+#layers { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 52px); display: flex; gap: 8px; padding: 0 14px 6px; overflow-x: auto; scrollbar-width: none; }
+#layers::-webkit-scrollbar { display: none; }
+.chip { flex: none; background: #0d1117cc; color: #c9d1d9; border: 1px solid #30363d; border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; backdrop-filter: blur(6px); }
+.chip.on { color: #fff; border-color: #f0883e; background: #3a1d0acc; }
+.chip:disabled { opacity: .5; cursor: default; }
+.chip small { color: #8b949e; margin-left: 6px; }
+#status { position: absolute; left: 14px; bottom: calc(env(safe-area-inset-bottom, 0px) + 40px); margin: 0; color: #8b949e; font-size: 12px; pointer-events: none; }
+.ev { padding: 8px 0; border-top: 1px solid #21262d; font-size: 14px; }
+.ev a { color: #58a6ff; font-size: 13px; }
+.ev .when { color: #8b949e; font-size: 12px; }

@@ -97,6 +97,7 @@ globe.add(new THREE.Points(geo, new THREE.PointsMaterial({
 })));
 
 // ---------- selection and hover ----------
+let layerHooks = {};
 let hoverC = -1;
 let selC = -1;
 
@@ -179,8 +180,9 @@ function select(ci) {
   selC = ci;
   paint(prev);
   paint(ci);
-  if (ci < 0) { hidePanel(); return; }
+  if (ci < 0) { hidePanel(); if (layerHooks.onSelect) layerHooks.onSelect(-1); return; }
   showPanel(ci);
+  if (layerHooks.onSelect) layerHooks.onSelect(ci);
   const c = data.countries[ci];
   tY = -c.lon * DEG;
   tX = Math.max(-MAX_TILT, Math.min(MAX_TILT, c.lat * DEG));
@@ -274,6 +276,28 @@ $('logout').addEventListener('click', async () => {
   location.href = '/login';
 });
 
+// ---------- live layers (layers.js) ----------
+function nearestCountry(lat, lon) {
+  const la = lat * DEG;
+  const lo = lon * DEG;
+  const x = Math.cos(la) * Math.sin(lo);
+  const y = Math.sin(la);
+  const z = Math.cos(la) * Math.cos(lo);
+  let best = -1;
+  let bestDot = 0.99; // within about 8 degrees of land
+  for (let i = 0; i < n; i++) {
+    const d = pos[3 * i] * x + pos[3 * i + 1] * y + pos[3 * i + 2] * z;
+    if (d > bestDot) { bestDot = d; best = i; }
+  }
+  return best < 0 ? -1 : data.c[best];
+}
+try {
+  const mod = await import('/static/layers.js');
+  layerHooks = mod.init({ THREE, globe, camera, renderer, nearestCountry }) || {};
+} catch (e) {
+  console.error('Live layers failed to load', e);
+}
+
 // ---------- render loop ----------
 let last = performance.now();
 function frame(now) {
@@ -284,6 +308,7 @@ function frame(now) {
     setHover(pick(pendingHover[0], pendingHover[1]));
   }
   pendingHover = null;
+  if (layerHooks.onFrame) layerHooks.onFrame(now, dt);
 
   if (flying) {
     const dy = wrap(tY - globe.rotation.y);

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import psycopg
@@ -5,7 +6,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts, pages
+from . import accounts, events, pages
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -17,11 +18,15 @@ COOKIE = "xyron_session"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_schema()
+    events.init_schema()
+    task = asyncio.create_task(events.ingest_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(accounts.router)
+app.include_router(events.router)
 pages.setup(app)
 
 
@@ -31,7 +36,7 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "no-referrer"
-    if request.url.path.startswith(("/auth", "/admin")):
+    if request.url.path.startswith(("/auth", "/admin", "/api")):
         resp.headers["Cache-Control"] = "no-store"
     return resp
 

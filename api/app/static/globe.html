@@ -6,6 +6,8 @@
 <body>
 <div id="stage">
 <canvas id="globe"></canvas>
+<div id="layers"></div>
+<p id="status"></p>
 <header id="bar"><span class="brand">XYRON</span><span id="who"></span><a id="adminlink" href="/admin" hidden>Admin</a><button id="logout" type="button">Sign out</button></header>
 <p id="hint">Drag to rotate &middot; scroll or pinch to zoom &middot; tap a country</p>
 </div>
@@ -14,7 +16,7 @@
 <h2 id="pname"></h2>
 <dl id="pinfo"></dl>
 <h3>Live events</h3>
-<p class="muted">No live feeds connected yet. They will appear here as they are added.</p>
+<div id="pevents"></div>
 </aside>
 <script type="module" src="/static/globe.js"></script>
 </body></html>
