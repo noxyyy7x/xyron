@@ -503,12 +503,13 @@ export function init(ctx) {
     flyTo(e.lat, e.lon, 2.4);
   }
 
-  async function refresh() {
+  async function refresh(only) {
     try {
+      const subset = Array.isArray(only) ? only : null;
       layers = await getJSON('/api/layers');
-      const live = layers.filter((l) => l.live).map((l) => l.id).join(',');
+      const live = layers.filter((l) => l.live && (!subset || subset.includes(l.id))).map((l) => l.id).join(',');
       const raw = live ? await getJSON('/api/events?hours=24&layers=' + live) : [];
-      events = raw.map((r) => {
+      const fresh = raw.map((r) => {
         const la = r.lat * DEG;
         const lo = r.lon * DEG;
         const st = styleOf(r.layer);
@@ -523,6 +524,7 @@ export function init(ctx) {
         e.color = st.color(e);
         return e;
       });
+      events = subset ? events.filter((e) => !subset.includes(e.layer)).concat(fresh) : fresh;
       renderChips();
       renderSportChips();
       rebuildMarkers();
@@ -540,7 +542,12 @@ export function init(ctx) {
   }
 
   refresh();
-  setInterval(refresh, 300000);
+  setInterval(() => refresh(), 300000);
+  setInterval(() => {
+    const ids = ['football', 'sports'].filter((id) => enabled.has(id));
+    const gameOn = events.some((e) => ids.includes(e.layer) && e.detail && e.detail.state === 'in');
+    if (gameOn && !document.hidden) refresh(ids);
+  }, 20000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 
   return {
