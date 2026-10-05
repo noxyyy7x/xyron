@@ -55,3 +55,14 @@ dd { margin: 0; font-size: 16px; }
 .avresults .row:hover { background: #161b22; }
 .avresults .more { padding: 6px 4px; color: #8b949e; font-size: 12px; }
 .avcount { margin: 12px 0 8px; color: #8b949e; font-size: 12px; }
+
+/* football chip: its own look, because football is the main sport */
+.chip.football { border-color: #2ee57a; color: #d9ffe9; background: #06210f; font-weight: 600; letter-spacing: .03em; box-shadow: 0 0 14px #2ee57a55, inset 0 0 8px #2ee57a22; }
+.chip.football.on { background: #0b3a1c; border-color: #62ff9d; box-shadow: 0 0 20px #2ee57a99, inset 0 0 10px #2ee57a44; }
+.chip.football small { color: #7dffb0; }
+
+/* one chip per sport, shown under the layer bar when Sports is on */
+#sportchips { position: absolute; left: 150px; right: 14px; top: calc(env(safe-area-inset-top, 0px) + 100px); display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; z-index: 3; }
+#sportchips[hidden] { display: none; }
+#sportchips::-webkit-scrollbar { display: none; }
+.chip.small { padding: 3px 10px; font-size: 12px; flex: 0 0 auto; }

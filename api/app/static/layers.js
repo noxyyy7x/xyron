@@ -89,7 +89,47 @@ const placeStyle = (color, summaryLabel) => ({
   summary: (n) => summaryLabel + ' \u00b7 ' + n + ' places (news feeds)',
 });
 
+const SPORT_COLORS = {
+  football: [0.25, 1.0, 0.55], basketball: [1.0, 0.62, 0.2], 'american-football': [0.85, 0.6, 0.35],
+  baseball: [1.0, 0.4, 0.4], hockey: [0.6, 0.85, 1.0], f1: [1.0, 0.25, 0.25], mma: [0.82, 0.45, 1.0],
+  rugby: [0.6, 0.9, 0.4], volleyball: [1.0, 0.85, 0.3],
+};
+const matchState = (e) => (e.detail && e.detail.state) || 'pre';
+const matchStyle = (isFootball) => ({
+  pulse: (e) => (matchState(e) === 'in' ? 1 : 0),
+  color: (e) => {
+    const base = SPORT_COLORS[e.detail.sport] || [0.8, 0.9, 1.0];
+    const k = matchState(e) === 'in' ? 1 : matchState(e) === 'pre' ? 0.75 : 0.45;
+    return [base[0] * k, base[1] * k, base[2] * k];
+  },
+  size: (e) => (isFootball ? 1.25 : 1) * (matchState(e) === 'in' ? 0.055 : matchState(e) === 'pre' ? 0.032 : 0.026),
+  rank: (e) => (matchState(e) === 'in' ? 2e12 : 1e12) - Math.abs(e.time - Date.now()),
+  tip: (e) => [e.title, [e.detail.league, e.detail.status].filter(Boolean).join(' \u00b7 ')],
+  rows: (e) => {
+    const d = e.detail;
+    return [
+      ['Match', e.title],
+      ['Status', d.status || (matchState(e) === 'in' ? 'Live' : matchState(e) === 'post' ? 'Finished' : 'Scheduled')],
+      d.league ? ['Competition', d.league] : null,
+      d.sport_label ? ['Sport', d.sport_label] : null,
+      Array.isArray(d.competitors) && d.competitors.length ? ['Competitors', d.competitors.map((c) => c.name).join(', ')] : null,
+      ['Start', new Date(e.time).toLocaleString()],
+      d.venue ? ['Venue', d.venue + (d.city ? ', ' + d.city : '')] : null,
+    ];
+  },
+  links: (e) => (typeof e.url === 'string' && e.url.startsWith('https://www.espn.com/')
+    ? [{ text: 'Match page on ESPN', url: e.url, domain: 'espn.com' }] : []),
+  source: {
+    name: 'Scores from ESPN public scoreboards (an unofficial feed). The map position is the venue city, so it is approximate.',
+    linkLabel: 'ESPN',
+    prefix: 'about:none',
+  },
+  summary: (n) => (isFootball ? 'Football \u00b7 ' + n + ' matches' : 'Sports \u00b7 ' + n + ' games') + ' (ESPN)',
+});
+
 export const STYLE = {
+  football: matchStyle(true),
+  sports: matchStyle(false),
   news: placeStyle([0.8, 0.92, 1.0], 'News'),
   politics: placeStyle([0.85, 0.5, 1.0], 'Politics'),
   aviation: {
@@ -195,6 +235,35 @@ export function hitTest(THREE, shown, globe, camera, rect, x, y, pxPerUnit, dpr)
   return best;
 }
 
+const SPORTS_OFF_KEY = 'xyron.sportsoff';
+function loadSportsOff() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SPORTS_OFF_KEY));
+    if (Array.isArray(v)) return new Set(v.filter((x) => typeof x === 'string'));
+  } catch (e) { /* storage unavailable */ }
+  return new Set();
+}
+function saveSportsOff(set) {
+  try { localStorage.setItem(SPORTS_OFF_KEY, JSON.stringify([...set])); } catch (e) { /* ignore */ }
+}
+// is this event switched on? (layers are chips; the sports layer also has one chip per sport)
+export function eventVisible(e, enabled, sportsOff) {
+  if (!enabled.has(e.layer)) return false;
+  return !(e.layer === 'sports' && e.detail && sportsOff.has(e.detail.sport));
+}
+// the sports present in the data, biggest first, for the sport chips
+export function sportList(events) {
+  const m = new Map();
+  for (const e of events) {
+    if (e.layer !== 'sports' || !e.detail || !e.detail.sport) continue;
+    const cur = m.get(e.detail.sport) || { id: e.detail.sport, label: e.detail.sport_label || e.detail.sport, n: 0, live: 0 };
+    cur.n += 1;
+    if (e.detail.state === 'in') cur.live += 1;
+    m.set(e.detail.sport, cur);
+  }
+  return [...m.values()].sort((a, b) => b.live - a.live || b.n - a.n);
+}
+
 export function init(ctx) {
   const { THREE, globe, camera, renderer, canvas, nearestCountry, countries, deselect, flyTo, openPanel } = ctx;
   const chipsEl = document.getElementById('layers');
@@ -203,6 +272,11 @@ export function init(ctx) {
   const evTitleEl = document.getElementById('pevtitle');
   const tipEl = document.getElementById('tip');
   const enabled = loadEnabled();
+  const sportsOff = loadSportsOff();
+  const sportRow = document.createElement('div');
+  sportRow.id = 'sportchips';
+  sportRow.hidden = true;
+  chipsEl.after(sportRow);
   const bufSize = new THREE.Vector2();
   let layers = [];
   let events = [];
@@ -222,7 +296,7 @@ export function init(ctx) {
 
   function rebuildMarkers() {
     if (points) { globe.remove(points); points.geometry.dispose(); points = null; }
-    shown = events.filter((e) => enabled.has(e.layer));
+    shown = events.filter((e) => eventVisible(e, enabled, sportsOff));
     if (!shown.length) return;
     const pos = new Float32Array(shown.length * 3);
     const size = new Float32Array(shown.length);
@@ -258,9 +332,9 @@ export function init(ctx) {
     for (const l of layers) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'chip' + (l.live && enabled.has(l.id) ? ' on' : '');
+      b.className = 'chip' + (l.live && enabled.has(l.id) ? ' on' : '') + (l.id === 'football' ? ' football' : '');
       b.disabled = !l.live;
-      b.append(l.label);
+      b.append((l.id === 'football' ? '\u26bd ' : '') + l.label);
       const s = document.createElement('small');
       s.textContent = l.live ? String(l.count) : 'soon';
       b.append(s);
@@ -270,6 +344,7 @@ export function init(ctx) {
           saveEnabled(enabled);
           broadcast();
           renderChips();
+          renderSportChips();
           rebuildMarkers();
           renderList();
           renderStatus();
@@ -277,6 +352,30 @@ export function init(ctx) {
         });
       }
       chipsEl.appendChild(b);
+    }
+  }
+
+  function renderSportChips() {
+    sportRow.replaceChildren();
+    const list = sportList(events);
+    sportRow.hidden = !(enabled.has('sports') && list.length);
+    for (const s of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip small' + (sportsOff.has(s.id) ? '' : ' on');
+      b.append(s.label);
+      const c = document.createElement('small');
+      c.textContent = (s.live ? s.live + ' live \u00b7 ' : '') + s.n;
+      b.append(c);
+      b.addEventListener('click', () => {
+        if (sportsOff.has(s.id)) sportsOff.delete(s.id); else sportsOff.add(s.id);
+        saveSportsOff(sportsOff);
+        renderSportChips();
+        rebuildMarkers();
+        renderList();
+        hideTip();
+      });
+      sportRow.appendChild(b);
     }
   }
 
@@ -322,7 +421,7 @@ export function init(ctx) {
       if (!l.live || !enabled.has(l.id)) continue;
       const st = styleOf(l.id);
       here.push(...events
-        .filter((e) => e.layer === l.id && e.country === selected)
+        .filter((e) => e.layer === l.id && e.country === selected && eventVisible(e, enabled, sportsOff))
         .sort((a, b) => st.rank(b) - st.rank(a))
         .slice(0, 8));
     }
@@ -417,13 +516,15 @@ export function init(ctx) {
           id: r.id, layer: r.layer, title: r.title, lat: r.lat, lon: r.lon,
           value: r.severity || 0, time: Date.parse(r.occurred_at), url: r.url, detail: r.detail || {},
           ux: Math.cos(la) * Math.sin(lo), uy: Math.sin(la), uz: Math.cos(la) * Math.cos(lo),
-          country: nearestCountry(r.lat, r.lon), pulse: st.pulse,
+          country: nearestCountry(r.lat, r.lon), pulse: 0,
         };
+        e.pulse = typeof st.pulse === 'function' ? st.pulse(e) : st.pulse;
         e.size = st.size(e);
         e.color = st.color(e);
         return e;
       });
       renderChips();
+      renderSportChips();
       rebuildMarkers();
       renderList();
       renderStatus();

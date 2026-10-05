@@ -46,8 +46,8 @@ LAYERS = [
     {"id": "aviation", "label": "Aviation", "live": True},
     {"id": "news", "label": "News", "live": True},
     {"id": "politics", "label": "Politics", "live": True},
-    {"id": "sports", "label": "Sports", "live": False},
-    {"id": "football", "label": "Football", "live": False},
+    {"id": "sports", "label": "Sports", "live": True},
+    {"id": "football", "label": "Football", "live": True},
 ]
 LIVE_IDS = {layer["id"] for layer in LAYERS if layer["live"]}
 feed_status = {"earthquakes": {"last_ok": None, "error": None}}
