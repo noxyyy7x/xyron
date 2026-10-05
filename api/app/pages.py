@@ -21,7 +21,7 @@ def _page(name: str):
 def setup(app: FastAPI) -> None:
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     for path, name in (
-        ("/", "home.html"),
+        ("/", "globe.html"),
         ("/login", "login.html"),
         ("/register", "register.html"),
         ("/admin", "admin.html"),
