@@ -20,7 +20,7 @@ CURRENT = (
     "weather_code,wind_speed_10m,wind_direction_10m"
 )
 BATCH = 100
-POLL_SECONDS = 1800
+POLL_SECONDS = 14400
 
 # WMO weather interpretation codes used by Open-Meteo
 WMO = {
@@ -104,7 +104,7 @@ async def ingest_loop():
                 chunk = cities[i:i + BATCH]
                 data = await asyncio.to_thread(_fetch, chunk)
                 total += await asyncio.to_thread(_store, weather_rows(chunk, data))
-                await asyncio.sleep(2)
+                await asyncio.sleep(20)
             feed_status["weather"] = {"last_ok": datetime.now(timezone.utc), "error": None}
             log.info("weather: %d cities stored", total)
         except asyncio.CancelledError:

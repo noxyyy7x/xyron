@@ -81,7 +81,7 @@ export const STYLE = {
   weather: {
     pulse: 0,
     color: (e) => tempColor(e.value),
-    size: () => 0.022,
+    size: () => 0.018,
     rank: (e) => e.detail.pop || 0,
     tip: (e) => [e.title, (num(e.detail.feels_like) ? 'Feels like ' + Math.round(e.detail.feels_like) + '\u00b0C \u00b7 ' : '') + (num(e.detail.wind_kmh) ? 'wind ' + Math.round(e.detail.wind_kmh) + ' km/h' : ago(e.time))],
     rows: (e) => [
