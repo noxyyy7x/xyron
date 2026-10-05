@@ -8,7 +8,7 @@ from shapely.geometry import shape
 
 URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "dots.json"
-N = 52000  # sample points over the whole sphere
+N = 110000  # sample points over the whole sphere
 
 print("Downloading country outlines...")
 with urllib.request.urlopen(URL, timeout=60) as r:
@@ -57,6 +57,7 @@ for idx, c in enumerate(countries):
         extra_lat.append(c["lat"]); extra_lon.append(c["lon"]); extra_c.append(idx)
 
 out = {
+    "spacing": round((4 * 3.141592653589793 / N) ** 0.5, 5),
     "countries": countries,
     "lat": [round(float(x), 2) for x in lat[land]] + [round(x, 2) for x in extra_lat],
     "lon": [round(float(x), 2) for x in lon[land]] + [round(x, 2) for x in extra_lon],

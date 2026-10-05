@@ -6,7 +6,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts, events, pages
+from . import accounts, events, pages, weather
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -19,9 +19,13 @@ COOKIE = "xyron_session"
 async def lifespan(app: FastAPI):
     init_schema()
     events.init_schema()
-    task = asyncio.create_task(events.ingest_loop())
+    tasks = [
+        asyncio.create_task(events.ingest_loop()),
+        asyncio.create_task(weather.ingest_loop()),
+    ]
     yield
-    task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)

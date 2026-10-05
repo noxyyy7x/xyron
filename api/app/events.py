@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS events_layer_time_idx ON events (layer, occurred_at D
 # live=False layers show as "coming soon" toggles until their feeds exist
 LAYERS = [
     {"id": "earthquakes", "label": "Earthquakes", "live": True},
-    {"id": "weather", "label": "Weather", "live": False},
+    {"id": "weather", "label": "Weather", "live": True},
     {"id": "aviation", "label": "Aviation", "live": False},
     {"id": "news", "label": "News", "live": False},
     {"id": "politics", "label": "Politics", "live": False},

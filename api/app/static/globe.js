@@ -3,6 +3,7 @@ import * as THREE from '/static/vendor/three.module.min.js';
 const $ = (id) => document.getElementById(id);
 const canvas = $('globe');
 const hint = $('hint');
+const panel = $('panel');
 const DEG = Math.PI / 180;
 const BASE = [0.26, 0.5, 0.92];
 const HOVER = [0.55, 0.86, 1.0];
@@ -10,6 +11,7 @@ const SELECT = [1.0, 0.78, 0.28];
 const MAX_TILT = 1.3;
 const ZMIN = 1.5;
 const ZMAX = 6;
+const PICK_COS = Math.cos(2.5 * DEG); // click must land within about 2.5 degrees of a dot
 const narrow = window.matchMedia('(max-width: 700px)');
 
 let renderer;
@@ -49,13 +51,28 @@ stage.add(new THREE.Mesh(
   }),
 ));
 
-function dotTexture() {
+function discTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
   g.beginPath();
   g.arc(32, 32, 30, 0, Math.PI * 2);
   g.fillStyle = '#fff';
+  g.fill();
+  return new THREE.CanvasTexture(c);
+}
+function ringTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.beginPath();
+  g.arc(32, 32, 26, 0, Math.PI * 2);
+  g.lineWidth = 5;
+  g.strokeStyle = '#fff';
+  g.stroke();
+  g.beginPath();
+  g.arc(32, 32, 20, 0, Math.PI * 2);
+  g.fillStyle = 'rgba(255,255,255,0.35)';
   g.fill();
   return new THREE.CanvasTexture(c);
 }
@@ -76,9 +93,9 @@ try {
 }
 
 const n = data.c.length;
+const spacing = data.spacing || 0.0155;
 const pos = new Float32Array(n * 3);
 const col = new Float32Array(n * 3);
-const byCountry = data.countries.map(() => []);
 for (let i = 0; i < n; i++) {
   const la = data.lat[i] * DEG;
   const lo = data.lon[i] * DEG;
@@ -86,33 +103,63 @@ for (let i = 0; i < n; i++) {
   pos[3 * i + 1] = Math.sin(la);
   pos[3 * i + 2] = Math.cos(la) * Math.cos(lo);
   col[3 * i] = BASE[0]; col[3 * i + 1] = BASE[1]; col[3 * i + 2] = BASE[2];
-  byCountry[data.c[i]].push(i);
 }
 const geo = new THREE.BufferGeometry();
 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
 const colorAttr = new THREE.BufferAttribute(col, 3);
 geo.setAttribute('color', colorAttr);
 globe.add(new THREE.Points(geo, new THREE.PointsMaterial({
-  size: 0.0165, vertexColors: true, sizeAttenuation: true, map: dotTexture(), alphaTest: 0.5,
+  size: spacing * 1.08, vertexColors: true, sizeAttenuation: true, map: discTexture(), alphaTest: 0.5,
 })));
 
-// ---------- selection and hover ----------
+// ring markers that show exactly which single dot is hovered or selected
+const ring = ringTexture();
+function makeMarker(size, color) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+  const m = new THREE.Points(g, new THREE.PointsMaterial({
+    size, color, map: ring, sizeAttenuation: true, transparent: true, depthWrite: false, alphaTest: 0.02,
+  }));
+  m.visible = false;
+  m.frustumCulled = false;
+  globe.add(m);
+  return m;
+}
+const hoverMarker = makeMarker(spacing * 5, 0x8ce0ff);
+const selMarker = makeMarker(spacing * 7, 0xffc847);
+function placeMarker(m, i) {
+  if (i < 0) { m.visible = false; return; }
+  m.geometry.attributes.position.setXYZ(0, pos[3 * i] * 1.004, pos[3 * i + 1] * 1.004, pos[3 * i + 2] * 1.004);
+  m.geometry.attributes.position.needsUpdate = true;
+  m.visible = true;
+}
+
+// ---------- selection and hover (one dot at a time) ----------
 let layerHooks = {};
-let hoverC = -1;
+let hoverDot = -1;
+let selDot = -1;
 let selC = -1;
 
-function paint(ci) {
-  if (ci < 0) return;
-  const rgb = ci === selC ? SELECT : ci === hoverC ? HOVER : BASE;
-  for (const i of byCountry[ci]) {
-    col[3 * i] = rgb[0]; col[3 * i + 1] = rgb[1]; col[3 * i + 2] = rgb[2];
-  }
+function paintDot(i) {
+  if (i < 0) return;
+  const rgb = i === selDot ? SELECT : i === hoverDot ? HOVER : BASE;
+  col[3 * i] = rgb[0]; col[3 * i + 1] = rgb[1]; col[3 * i + 2] = rgb[2];
   colorAttr.needsUpdate = true;
 }
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 const tmp = new THREE.Vector3();
+
+function nearestDot(x, y, z, minCos) {
+  let best = -1;
+  let bestDot = minCos;
+  for (let i = 0; i < n; i++) {
+    const d = pos[3 * i] * x + pos[3 * i + 1] * y + pos[3 * i + 2] * z;
+    if (d > bestDot) { bestDot = d; best = i; }
+  }
+  return best;
+}
 
 function pick(clientX, clientY) {
   const r = canvas.getBoundingClientRect();
@@ -123,27 +170,21 @@ function pick(clientX, clientY) {
   tmp.copy(hit.point);
   globe.worldToLocal(tmp);
   tmp.normalize();
-  let best = -1;
-  let bestDot = 0.9986; // within about 3 degrees of a land dot
-  for (let i = 0; i < n; i++) {
-    const d = pos[3 * i] * tmp.x + pos[3 * i + 1] * tmp.y + pos[3 * i + 2] * tmp.z;
-    if (d > bestDot) { bestDot = d; best = i; }
-  }
-  return best < 0 ? -1 : data.c[best];
+  return nearestDot(tmp.x, tmp.y, tmp.z, PICK_COS);
 }
 
 let pendingHover = null;
-function setHover(ci) {
-  if (ci === hoverC) return;
-  const prev = hoverC;
-  hoverC = ci;
-  paint(prev);
-  paint(ci);
-  canvas.style.cursor = ci >= 0 ? 'pointer' : 'grab';
+function setHover(i) {
+  if (i === hoverDot) return;
+  const prev = hoverDot;
+  hoverDot = i;
+  paintDot(prev);
+  paintDot(i);
+  placeMarker(hoverMarker, i === selDot ? -1 : i);
+  canvas.style.cursor = i >= 0 ? 'pointer' : 'grab';
 }
 
 // ---------- detail panel ----------
-const panel = $('panel');
 function row(dl, label, value) {
   const dt = document.createElement('dt');
   dt.textContent = label;
@@ -151,8 +192,8 @@ function row(dl, label, value) {
   dd.textContent = value;
   dl.append(dt, dd);
 }
-function showPanel(ci) {
-  const c = data.countries[ci];
+function showPanel(i) {
+  const c = data.countries[data.c[i]];
   $('pname').textContent = c.name;
   const dl = $('pinfo');
   dl.replaceChildren();
@@ -160,7 +201,10 @@ function showPanel(ci) {
   if (c.continent) row(dl, 'Continent', c.continent);
   if (c.region) row(dl, 'Region', c.region);
   if (c.pop) row(dl, 'Population (est.)', c.pop.toLocaleString());
-  row(dl, 'Centre point', c.lat.toFixed(2) + '\u00b0, ' + c.lon.toFixed(2) + '\u00b0');
+  row(dl, 'Selected point', data.lat[i].toFixed(2) + '\u00b0, ' + data.lon[i].toFixed(2) + '\u00b0');
+  openPanel();
+}
+function openPanel() {
   panel.hidden = false;
   document.body.classList.add('panel-open');
 }
@@ -175,19 +219,29 @@ let tX = 0;
 let tZoom = zoom;
 function wrap(a) { return ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI; }
 
-function select(ci) {
-  const prev = selC;
-  selC = ci;
-  paint(prev);
-  paint(ci);
-  if (ci < 0) { hidePanel(); if (layerHooks.onSelect) layerHooks.onSelect(-1); return; }
-  showPanel(ci);
-  if (layerHooks.onSelect) layerHooks.onSelect(ci);
-  const c = data.countries[ci];
-  tY = -c.lon * DEG;
-  tX = Math.max(-MAX_TILT, Math.min(MAX_TILT, c.lat * DEG));
-  tZoom = Math.min(zoom, 2.6);
+function flyTo(lat, lon, z) {
+  tY = -lon * DEG;
+  tX = Math.max(-MAX_TILT, Math.min(MAX_TILT, lat * DEG));
+  tZoom = Math.min(zoom, z || 2.6);
   flying = true;
+}
+
+function select(i) {
+  const prev = selDot;
+  selDot = i;
+  selC = i >= 0 ? data.c[i] : -1;
+  paintDot(prev);
+  paintDot(i);
+  placeMarker(selMarker, i);
+  placeMarker(hoverMarker, hoverDot === selDot ? -1 : hoverDot);
+  if (i < 0) {
+    hidePanel();
+    if (layerHooks.onSelect) layerHooks.onSelect(-1);
+    return;
+  }
+  showPanel(i);
+  if (layerHooks.onSelect) layerHooks.onSelect(selC);
+  flyTo(data.lat[i], data.lon[i]);
 }
 $('close').addEventListener('click', () => select(-1));
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') select(-1); });
@@ -210,6 +264,7 @@ function touched() {
   lastInput = performance.now();
   flying = false;
   hint.classList.add('gone');
+  if (layerHooks.onHover) layerHooks.onHover(-1, -1);
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -245,11 +300,17 @@ canvas.addEventListener('pointermove', (e) => {
 function release(e) {
   if (!pointers.delete(e.pointerId)) return;
   if (pointers.size < 2) lastPinch = 0;
-  if (pointers.size === 0 && e.type === 'pointerup' && moved < 8) select(pick(e.clientX, e.clientY));
+  if (pointers.size === 0 && e.type === 'pointerup' && moved < 8) {
+    if (layerHooks.onClick && layerHooks.onClick(e.clientX, e.clientY)) return; // an event marker was tapped
+    select(pick(e.clientX, e.clientY));
+  }
 }
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
-canvas.addEventListener('pointerleave', () => { if (pointers.size === 0) setHover(-1); });
+canvas.addEventListener('pointerleave', () => {
+  if (pointers.size === 0) setHover(-1);
+  if (layerHooks.onHover) layerHooks.onHover(-1, -1);
+});
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   setZoom(zoom * Math.exp(e.deltaY * 0.0012));
@@ -280,20 +341,15 @@ $('logout').addEventListener('click', async () => {
 function nearestCountry(lat, lon) {
   const la = lat * DEG;
   const lo = lon * DEG;
-  const x = Math.cos(la) * Math.sin(lo);
-  const y = Math.sin(la);
-  const z = Math.cos(la) * Math.cos(lo);
-  let best = -1;
-  let bestDot = 0.99; // within about 8 degrees of land
-  for (let i = 0; i < n; i++) {
-    const d = pos[3 * i] * x + pos[3 * i + 1] * y + pos[3 * i + 2] * z;
-    if (d > bestDot) { bestDot = d; best = i; }
-  }
-  return best < 0 ? -1 : data.c[best];
+  const i = nearestDot(Math.cos(la) * Math.sin(lo), Math.sin(la), Math.cos(la) * Math.cos(lo), 0.99); // about 8 degrees
+  return i < 0 ? -1 : data.c[i];
 }
 try {
   const mod = await import('/static/layers.js');
-  layerHooks = mod.init({ THREE, globe, camera, renderer, nearestCountry }) || {};
+  layerHooks = mod.init({
+    THREE, globe, camera, renderer, canvas, nearestCountry,
+    countries: data.countries, deselect: () => select(-1), flyTo, openPanel,
+  }) || {};
 } catch (e) {
   console.error('Live layers failed to load', e);
 }
@@ -305,7 +361,9 @@ function frame(now) {
   last = now;
 
   if (pendingHover && pointers.size === 0) {
-    setHover(pick(pendingHover[0], pendingHover[1]));
+    const overEvent = layerHooks.onHover ? layerHooks.onHover(pendingHover[0], pendingHover[1]) : false;
+    setHover(overEvent ? -1 : pick(pendingHover[0], pendingHover[1]));
+    if (overEvent) canvas.style.cursor = 'pointer';
   }
   pendingHover = null;
   if (layerHooks.onFrame) layerHooks.onFrame(now, dt);
@@ -317,7 +375,7 @@ function frame(now) {
     globe.rotation.x += dx * 0.08;
     setZoom(zoom + (tZoom - zoom) * 0.06);
     if (Math.abs(dy) < 0.002 && Math.abs(dx) < 0.002) flying = false;
-  } else if (selC < 0 && pointers.size === 0 && now - lastInput > 2500) {
+  } else if (selDot < 0 && !document.body.classList.contains('panel-open') && pointers.size === 0 && now - lastInput > 2500) {
     globe.rotation.y += dt * 0.00012;
   }
 

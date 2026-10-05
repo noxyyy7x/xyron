@@ -35,3 +35,8 @@ dd { margin: 0; font-size: 16px; }
 .ev { padding: 8px 0; border-top: 1px solid #21262d; font-size: 14px; }
 .ev a { color: #58a6ff; font-size: 13px; }
 .ev .when { color: #8b949e; font-size: 12px; }
+#tip { position: fixed; z-index: 10; max-width: 260px; padding: 8px 10px; background: #161b22f2; border: 1px solid #30363d; border-radius: 8px; font-size: 13px; line-height: 1.4; pointer-events: none; box-shadow: 0 6px 20px #000a; }
+#tip[hidden] { display: none; }
+.tip-title { font-weight: 600; margin-bottom: 2px; }
+.tip-hint { color: #8b949e; font-size: 12px; margin-top: 2px; }
+.ev { cursor: pointer; }
