@@ -129,9 +129,45 @@ const matchStyle = (isFootball) => ({
   summary: (n) => (isFootball ? 'Football \u00b7 ' + n + ' matches' : 'Sports \u00b7 ' + n + ' games') + ' (ESPN)',
 });
 
+const marketState = (e) => (e.detail && e.detail.state) || 'closed';
+const marketChange = (e) => (e.detail && typeof e.detail.change_pct === 'number' ? e.detail.change_pct : 0);
+const marketStyle = {
+  pulse: (e) => (marketState(e) === 'open' ? 1 : 0),
+  color: (e) => {
+    const chg = marketChange(e);
+    const k = marketState(e) === 'open' ? 1 : marketState(e) === 'closed' ? 0.4 : 0.7;
+    const base = chg >= 0.005 ? [0.18, 0.9, 0.48] : chg <= -0.005 ? [1.0, 0.17, 0.24] : [1.0, 0.37, 0.82];
+    return [base[0] * k, base[1] * k, base[2] * k];
+  },
+  size: (e) => 0.03 + Math.min(Math.abs(marketChange(e)), 3) * 0.008 + (marketState(e) === 'open' ? 0.01 : 0),
+  rank: (e) => Math.abs(marketChange(e)) + (marketState(e) === 'open' ? 100 : 0),
+  tip: (e) => [e.title, String(e.detail.state || '').toUpperCase() + (e.detail.label ? ' \u00b7 ' + e.detail.label : '')],
+  rows: (e) => {
+    const d = e.detail;
+    return [
+      ['Exchange', d.exchange],
+      ['City', d.city + ', ' + d.country],
+      ['Index', d.index],
+      typeof d.level === 'number' ? ['Level', d.level.toLocaleString(undefined, { maximumFractionDigits: 2 }) + (d.currency ? ' ' + d.currency : '')] : null,
+      typeof d.change_pct === 'number' ? ['Today', (d.change_pct >= 0 ? '+' : '') + d.change_pct.toFixed(2) + '%'] : null,
+      ['Status', String(d.state || '').toUpperCase() + (d.label ? ' \u00b7 ' + d.label : '')],
+      ['Local time', d.local_time],
+      ['Hours', d.hours],
+    ];
+  },
+  links: () => [],
+  source: {
+    name: 'Index levels from Yahoo Finance, which can run 10 to 15 minutes behind. Opening hours follow the normal timetable; public holidays are not listed.',
+    linkLabel: 'Yahoo Finance',
+    prefix: 'about:none',
+  },
+  summary: (n) => 'Markets \u00b7 ' + n + ' exchanges',
+};
+
 export const STYLE = {
   football: matchStyle(true),
   sports: matchStyle(false),
+  markets: marketStyle,
   news: placeStyle([0.8, 0.92, 1.0], 'News'),
   politics: placeStyle([0.85, 0.5, 1.0], 'Politics'),
   aviation: {
@@ -269,10 +305,11 @@ export function sportList(events) {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // One colour per layer, matching what it shows. Aviation is left out on purpose and keeps the default look.
 export const CHIP_COLORS = {
-  earthquakes: '#ff5a36', weather: '#36d6e7', news: '#a5c8ff', politics: '#b07cff', sports: '#ffc83d', football: '#2ee57a',
+  earthquakes: '#ff5a36', weather: '#36d6e7', news: '#a5c8ff', politics: '#b07cff', sports: '#ffc83d', football: '#2ee57a', markets: '#ff5fd2',
 };
 // Simple icons on a 24 by 24 grid. Lines, except the plane, which is solid.
 const CHIP_ICONS = {
+  markets: { d: ['M3 17l6-6 4 4 8-8', 'M15 7h6v6'] },
   earthquakes: { d: ['M2 12h4l2.5-6 4 12 3-9 1.5 3H22'] },
   weather: { d: ['M7 18a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 17.1 9.2 3.9 3.9 0 0 1 17 18H7z'] },
   news: { d: ['M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5V5z', 'M16 9h3.5v8.5a1.5 1.5 0 0 1-1.5 1.5H16', 'M7 9h6M7 12.5h6M7 16h4'] },

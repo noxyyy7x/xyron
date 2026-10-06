@@ -6,3 +6,4 @@ argon2-cffi
 pyotp
 cryptography
 email-validator
+tzdata
