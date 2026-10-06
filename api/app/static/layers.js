@@ -168,6 +168,16 @@ export const STYLE = {
   football: matchStyle(true),
   sports: matchStyle(false),
   markets: marketStyle,
+  ships: {
+    pulse: 0,
+    color: () => [0.31, 0.49, 1.0],
+    size: () => 0.02,
+    rank: () => 0,
+    tip: (e) => [e.title, ''],
+    rows: () => [],
+    source: null,
+    summary: (n, l) => 'Ships \u00b7 ' + ((l && l.count) || 0).toLocaleString() + ' vessels (AISstream)',
+  },
   news: placeStyle([0.8, 0.92, 1.0], 'News'),
   politics: placeStyle([0.85, 0.5, 1.0], 'Politics'),
   aviation: {
@@ -305,11 +315,12 @@ export function sportList(events) {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // One colour per layer, matching what it shows. Aviation is left out on purpose and keeps the default look.
 export const CHIP_COLORS = {
-  earthquakes: '#ff5a36', weather: '#36d6e7', news: '#a5c8ff', politics: '#b07cff', sports: '#ffc83d', football: '#2ee57a', markets: '#ff5fd2',
+  earthquakes: '#ff5a36', weather: '#36d6e7', news: '#a5c8ff', politics: '#b07cff', sports: '#ffc83d', football: '#2ee57a', markets: '#ff5fd2', ships: '#4f7cff',
 };
 // Simple icons on a 24 by 24 grid. Lines, except the plane, which is solid.
 const CHIP_ICONS = {
   markets: { d: ['M3 17l6-6 4 4 8-8', 'M15 7h6v6'] },
+  ships: { d: ['M3 16h18l-2.5 4h-13z', 'M6 16v-5h12v5', 'M12 11V6', 'M9 6h6'] },
   earthquakes: { d: ['M2 12h4l2.5-6 4 12 3-9 1.5 3H22'] },
   weather: { d: ['M7 18a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 17.1 9.2 3.9 3.9 0 0 1 17 18H7z'] },
   news: { d: ['M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5V5z', 'M16 9h3.5v8.5a1.5 1.5 0 0 1-1.5 1.5H16', 'M7 9h6M7 12.5h6M7 16h4'] },

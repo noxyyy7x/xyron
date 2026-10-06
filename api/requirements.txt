@@ -7,3 +7,4 @@ pyotp
 cryptography
 email-validator
 tzdata
+websockets>=12
