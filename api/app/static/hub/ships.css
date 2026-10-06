@@ -1,0 +1,4 @@
+/* Ships: the filter button and panel sit under the aircraft ones. The look comes from theme.css. */
+#shipfilterbtn { position: absolute; left: 14px; top: 136px; z-index: 4; }
+#shipfilterbtn[hidden], #shipfilters[hidden] { display: none; }
+#shipfilters { top: 176px; max-height: calc(100% - 260px); }
