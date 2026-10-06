@@ -93,6 +93,8 @@ const SPORT_COLORS = {
   football: [0.25, 1.0, 0.55], basketball: [1.0, 0.62, 0.2], 'american-football': [0.85, 0.6, 0.35],
   baseball: [1.0, 0.4, 0.4], hockey: [0.6, 0.85, 1.0], f1: [1.0, 0.25, 0.25], mma: [0.82, 0.45, 1.0],
   rugby: [0.6, 0.9, 0.4], volleyball: [1.0, 0.85, 0.3],
+  'rugby-league': [0.5, 0.85, 0.35], tennis: [0.8, 1.0, 0.3], golf: [0.35, 0.9, 0.55], lacrosse: [0.9, 0.55, 0.8],
+  'australian-football': [1.0, 0.7, 0.3], 'field-hockey': [0.5, 0.8, 1.0], 'water-polo': [0.3, 0.7, 1.0],
 };
 const matchState = (e) => (e.detail && e.detail.state) || 'pre';
 const matchStyle = (isFootball) => ({
@@ -322,6 +324,11 @@ export function paintChip(b, hex) {
 
 export function init(ctx) {
   const { THREE, globe, camera, renderer, canvas, nearestCountry, countries, deselect, flyTo, openPanel } = ctx;
+  // the football hub asks the globe to fly to a stadium
+  window.addEventListener('xyron-flyto', (ev) => {
+    const d = ev.detail || {};
+    if (typeof d.lat === 'number' && typeof d.lon === 'number') flyTo(d.lat, d.lon, 2.2);
+  });
   const chipsEl = document.getElementById('layers');
   const statusEl = document.getElementById('status');
   const listEl = document.getElementById('pevents');
