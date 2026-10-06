@@ -325,9 +325,13 @@ async def stream_loop(url=None):
                 STATS["connected"] = True
                 log.info("ships: connected to AISstream")
                 n = 0
+                first = True
                 async for raw in ws:
                     if handle_message(raw):
                         backoff = 5  # only real data counts as the connection working
+                        if first:
+                            first = False
+                            log.info("ships: receiving ship positions")
                     if STATS["refused"]:
                         raise Refused(STATS["refused"])
                     n += 1
@@ -405,6 +409,16 @@ async def ingest_loop():
 @router.get("/api/ships")
 def ships(user=Depends(current_user)):
     return Response(content=SNAPSHOT["body"], media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/ships/status")
+def ships_status(user=Depends(current_user)):
+    """A plain readout of the connection, for checking that ships are flowing."""
+    now = time.time()
+    return {"connected": STATS["connected"], "messages": STATS["messages"], "positions": STATS["positions"], "statics": STATS["statics"],
+            "dropped": STATS["dropped"], "last_message_age_s": int(now - STATS["last_message"]) if STATS["last_message"] else None,
+            "last_error": STATS["last_error"], "ships_tracked": len(VESSELS), "ships_on_map": SNAPSHOT["count"], "details_known": len(STATIC),
+            "trail_points_waiting": len(TRACKBUF), "key_present": bool(os.environ.get("AISSTREAM_API_KEY", "").strip())}
 
 
 @router.get("/api/ship/{mmsi}")
