@@ -50,6 +50,7 @@ LAYERS = [
     {"id": "football", "label": "Football", "live": True},
     {"id": "markets", "label": "Markets", "live": True},
     {"id": "ships", "label": "Ships", "live": True},
+    {"id": "hazards", "label": "Hazards", "live": True},
 ]
 LIVE_IDS = {layer["id"] for layer in LAYERS if layer["live"]}
 feed_status = {"earthquakes": {"last_ok": None, "error": None}}
@@ -153,6 +154,8 @@ def layers(user=Depends(current_user)):
         item["updated"] = st["last_ok"].isoformat() if st.get("last_ok") else None
         if st.get("count") is not None:
             item["count"] = st["count"]
+        if st.get("error"):
+            item["error"] = str(st["error"])[:120]
         out.append(item)
     return out
 
