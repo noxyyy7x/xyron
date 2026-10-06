@@ -17,15 +17,19 @@ attribute vec3 aDir;
 attribute vec3 aColor;
 attribute float aSel;
 attribute float aShow;
+attribute float aIcon;
+attribute float aSize;
 uniform float uPx;
 uniform float uAspect;
 uniform float uScale;
 varying vec3 vColor;
 varying float vAngle;
 varying float vSel;
+varying float vIcon;
 void main() {
   vColor = aColor;
   vSel = aSel;
+  vIcon = aIcon;
   vAngle = 0.0;
   if (aShow < 0.5) {
     gl_PointSize = 0.0;
@@ -39,8 +43,8 @@ void main() {
   vec2 b = clipB.xy / clipB.w;
   vec2 d = vec2((b.x - a.x) * uAspect, b.y - a.y);
   vAngle = atan(d.x, d.y);
-  float size = clamp(0.026 * uPx / -mv.z, 9.0, 24.0) * uScale;
-  gl_PointSize = size * (1.0 + 1.3 * aSel);
+  float size = clamp(0.028 * uPx / -mv.z, 11.0, 38.0) * uScale * aSize;
+  gl_PointSize = min(size * (1.0 + 1.3 * aSel), 110.0);
   gl_Position = clipA;
 }`;
 
@@ -49,6 +53,7 @@ uniform sampler2D uTex;
 varying vec3 vColor;
 varying float vAngle;
 varying float vSel;
+varying float vIcon;
 void main() {
   vec2 p = vec2(gl_PointCoord.x * 2.0 - 1.0, 1.0 - gl_PointCoord.y * 2.0);
   float c = cos(vAngle);
@@ -56,34 +61,100 @@ void main() {
   vec2 q = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
   vec2 uv = vec2(q.x * 0.5 + 0.5, q.y * 0.5 + 0.5);
   float shape = 0.0;
+  float shade = 1.0;
   if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
-    shape = texture2D(uTex, uv).a;
+    float ic = floor(vIcon + 0.5);
+    vec2 cell = vec2(mod(ic, 4.0), floor(ic / 4.0));
+    vec4 t = texture2D(uTex, vec2((cell.x + uv.x) / 4.0, (3.0 - cell.y + uv.y) / 4.0));
+    shape = t.a;
+    shade = t.r;
   }
   float d = length(p);
   float ring = smoothstep(0.78, 0.84, d) * (1.0 - smoothstep(0.93, 0.98, d)) * vSel;
   float a = max(shape, ring);
   if (a < 0.03) discard;
-  vec3 col = mix(vColor, vec3(0.55, 0.9, 1.0), vSel);
+  vec3 col = mix(vColor * (0.32 + 0.68 * shade), vec3(0.55, 0.9, 1.0), vSel);
   gl_FragColor = vec4(col, a);
 }`;
 
-// A top-down ship silhouette, bow pointing up, drawn once into a texture.
-function shipTexture(THREE) {
-  const S = 128;
+// Top-down ship silhouettes, bow pointing up, on a 128 by 128 grid. Each is a list of simple shapes. White is the hull, greys are
+// decks and cabins (the shader darkens them), and the dark outline keeps small ships readable against the globe.
+const OUTLINE = '#141414';
+function hullPoints(cx, top, bottom, width, bowFrac, sternFrac) {
+  const half = width / 2;
+  const len = bottom - top;
+  const prof = (u) => { // u runs from the bow tip (0) to the stern (1)
+    const bow = Math.pow(Math.min(1, u / bowFrac), 0.6);
+    const stern = sternFrac ? Math.max(0.6, Math.pow(Math.min(1, (1 - u) / sternFrac), 0.5)) : 1;
+    return half * bow * stern;
+  };
+  const N = 20;
+  const pts = [];
+  for (let i = 0; i <= N; i++) pts.push([+(cx - prof(i / N)).toFixed(1), +(top + (i / N) * len).toFixed(1)]);
+  for (let i = N; i >= 0; i--) pts.push([+(cx + prof(i / N)).toFixed(1), +(top + (i / N) * len).toFixed(1)]);
+  return pts;
+}
+const hull = (cx, top, bottom, width, bowFrac, sternFrac, fill = '#ffffff') => ({ t: 'poly', f: fill, s: true, p: hullPoints(cx, top, bottom, width, bowFrac, sternFrac) });
+const box = (x, y, w, h, fill = '#d6d6d6', s = true) => ({ t: 'rect', f: fill, s, x, y, w, h });
+const dot = (x, y, r, fill = '#8a8a8a', s = true) => ({ t: 'circ', f: fill, s, x, y, r });
+const bar = (x1, y1, x2, y2, w = 3, c = '#7a7a7a') => ({ t: 'line', c, w, p: [[x1, y1], [x2, y2]] });
+const containers = [];
+for (const y of [34, 52, 70, 88]) for (const dx of [-15, -5, 5]) containers.push(box(64 + dx - 0.5, y, 10, 15, '#8d8d8d', false));
+export const ICON_DEFS = [
+  // 0 cargo and container ships: stacks of boxes and a bridge at the stern
+  [hull(64, 4, 124, 40, 0.2, 0.06), ...containers, box(48, 102, 32, 17, '#dcdcdc')],
+  // 1 tankers: a long flat deck with a pipe run and manifolds, bridge aft
+  [hull(64, 4, 124, 42, 0.15, 0.05), bar(64, 20, 64, 98, 3), bar(52, 40, 76, 40, 2), bar(52, 54, 76, 54, 2), bar(52, 68, 76, 68, 2), bar(52, 82, 76, 82, 2), box(47, 102, 34, 17, '#dcdcdc'), dot(64, 28, 3, '#bdbdbd', false)],
+  // 2 passenger ships and ferries: wide hull, tiers of decks, funnel
+  [hull(64, 6, 122, 50, 0.2, 0.08), box(46, 30, 36, 78, '#dedede'), box(50, 36, 28, 9, '#9a9a9a', false), box(50, 52, 28, 9, '#9a9a9a', false), box(50, 68, 28, 9, '#9a9a9a', false), box(50, 84, 28, 9, '#9a9a9a', false), dot(64, 98, 6, '#f2f2f2')],
+  // 3 fishing vessels: small, wheelhouse forward, gear aft
+  [hull(64, 18, 114, 32, 0.3, 0.1), box(54, 36, 20, 22, '#dcdcdc'), bar(64, 60, 64, 104, 3), bar(50, 70, 78, 70, 2), bar(52, 90, 76, 90, 2)],
+  // 4 tugs and service vessels: short and stubby, wheelhouse and funnel
+  [hull(64, 30, 108, 42, 0.34, 0.12), box(53, 44, 22, 24, '#dcdcdc'), dot(64, 78, 5, '#bdbdbd'), dot(64, 95, 3, '#8a8a8a', false)],
+  // 5 sailing and pleasure craft: slim hull with sails
+  [hull(64, 12, 114, 22, 0.3, 0.1), { t: 'poly', f: '#ececec', s: true, p: [[64, 18], [90, 88], [64, 88]] }, { t: 'poly', f: '#d0d0d0', s: true, p: [[61, 26], [44, 80], [61, 80]] }, bar(64, 16, 64, 96, 2, '#555555')],
+  // 6 high-speed craft: twin slim hulls joined by a deck
+  [hull(49, 6, 122, 14, 0.3, 0.05), hull(79, 6, 122, 14, 0.3, 0.05), box(44, 52, 40, 36, '#dcdcdc'), box(52, 58, 24, 12, '#9a9a9a', false)],
+  // 7 military and law enforcement: sleek hull, gun forward, superstructure and helipad
+  [hull(64, 3, 125, 30, 0.34, 0.05), dot(64, 34, 6, '#bdbdbd'), bar(64, 34, 64, 12, 3, '#5a5a5a'), box(55, 52, 18, 30, '#dcdcdc'), dot(64, 104, 9, '#c8c8c8')],
+  // 8 anything else
+  [hull(64, 8, 120, 36, 0.24, 0.06), box(52, 86, 24, 22, '#dcdcdc')],
+];
+export const ICON_INDEX = { cargo: 0, tanker: 1, passenger: 2, fishing: 3, service: 4, pleasure: 5, highspeed: 6, military: 7, other: 8 };
+
+export function drawIcon(g, def) {
+  for (const sh of def) {
+    g.beginPath();
+    if (sh.t === 'poly') sh.p.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    else if (sh.t === 'rect') g.rect(sh.x, sh.y, sh.w, sh.h);
+    else if (sh.t === 'circ') g.arc(sh.x, sh.y, sh.r, 0, Math.PI * 2);
+    else if (sh.t === 'line') { g.moveTo(sh.p[0][0], sh.p[0][1]); g.lineTo(sh.p[1][0], sh.p[1][1]); }
+    if (sh.t === 'poly') g.closePath();
+    if (sh.t === 'line') { g.strokeStyle = sh.c; g.lineWidth = sh.w; g.lineCap = 'round'; g.stroke(); continue; }
+    g.fillStyle = sh.f;
+    g.fill();
+    if (sh.s) { g.strokeStyle = OUTLINE; g.lineWidth = 3.2; g.lineJoin = 'round'; g.stroke(); }
+  }
+}
+// all the icons in one 4 by 4 picture, so one texture serves every ship
+function shipAtlas(THREE) {
   const c = document.createElement('canvas');
-  c.width = c.height = S;
+  c.width = c.height = 512;
   const g = c.getContext('2d');
-  const half = [[32, 2], [38.5, 14], [40.5, 30], [40.5, 54], [37.5, 62], [32, 62]];
-  const pts = half.concat(half.slice(1, -1).reverse().map(([x, y]) => [64 - x, y]));
-  g.beginPath();
-  pts.forEach(([x, y], i) => (i ? g.lineTo(x * 2, y * 2) : g.moveTo(x * 2, y * 2)));
-  g.closePath();
-  g.fillStyle = '#fff';
-  g.fill();
+  ICON_DEFS.forEach((def, i) => {
+    g.save();
+    g.translate((i % 4) * 128, Math.floor(i / 4) * 128);
+    drawIcon(g, def);
+    g.restore();
+  });
   const t = new THREE.CanvasTexture(c);
   t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
   return t;
 }
+// bigger ships are drawn a little bigger; ships that have not reported a length get an average size
+export const sizeFactor = (len) => (len > 0 ? 0.8 + 0.5 * Math.min(len, 330) / 330 : 0.9);
 
 // ----- ship kinds (the same table the server uses) -----
 export const CATEGORY_LABEL = {
@@ -212,7 +283,7 @@ export function init(ctx) {
   const { THREE, globe, camera, canvas, deselect, flyTo, openPanel } = ctx;
   const tipEl = document.getElementById('tip');
   const material = new THREE.ShaderMaterial({
-    uniforms: { uPx: { value: 600 }, uAspect: { value: 1 }, uScale: { value: Number(readSize()) }, uTex: { value: shipTexture(THREE) } },
+    uniforms: { uPx: { value: 600 }, uAspect: { value: 1 }, uScale: { value: Number(readSize()) }, uTex: { value: shipAtlas(THREE) } },
     vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false,
   });
 
@@ -382,6 +453,8 @@ export function init(ctx) {
     pos = new Float32Array(n * 3); dir = new Float32Array(n * 3);
     sel = new Float32Array(n); show = new Float32Array(n).fill(1);
     const color = new Float32Array(n * 3);
+    const icon = new Float32Array(n);
+    const size = new Float32Array(n);
     selected = -1;
     for (let i = 0; i < n; i++) {
       const s = rows[i];
@@ -392,6 +465,8 @@ export function init(ctx) {
       trk[i] = (s[R.hdg] >= 0 ? s[R.hdg] : s[R.cog] >= 0 ? s[R.cog] : 0) * DEG; // the way the icon points
       const c = colorOf(s[R.type]);
       color[3 * i] = c[0]; color[3 * i + 1] = c[1]; color[3 * i + 2] = c[2];
+      icon[i] = ICON_INDEX[category(s[R.type])];
+      size[i] = sizeFactor(s[R.len]);
       if (selectedMmsi !== null && s[R.mmsi] === selectedMmsi) selected = i;
     }
     if (selected >= 0) sel[selected] = 1;
@@ -401,6 +476,8 @@ export function init(ctx) {
     g.setAttribute('aColor', new THREE.BufferAttribute(color, 3));
     g.setAttribute('aSel', new THREE.BufferAttribute(sel, 1));
     g.setAttribute('aShow', new THREE.BufferAttribute(show, 1));
+    g.setAttribute('aIcon', new THREE.BufferAttribute(icon, 1));
+    g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
     points = new THREE.Points(g, material);
     points.frustumCulled = false;
     points.visible = enabled;
