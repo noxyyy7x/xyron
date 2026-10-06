@@ -60,15 +60,13 @@ void main() {
   float s = sin(vAngle);
   vec2 q = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
   vec2 uv = vec2(q.x * 0.5 + 0.5, q.y * 0.5 + 0.5);
-  float shape = 0.0;
-  float shade = 1.0;
-  if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
-    float ic = floor(vIcon + 0.5);
-    vec2 cell = vec2(mod(ic, 4.0), floor(ic / 4.0));
-    vec4 t = texture2D(uTex, vec2((cell.x + uv.x) / 4.0, (3.0 - cell.y + uv.y) / 4.0));
-    shape = t.a;
-    shade = t.r;
-  }
+  float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+  vec2 uvc = clamp(uv, 0.002, 0.998);
+  float ic = floor(vIcon + 0.5);
+  vec2 cell = vec2(mod(ic, 4.0), floor(ic / 4.0));
+  vec4 t = texture2D(uTex, vec2((cell.x + uvc.x) / 4.0, (3.0 - cell.y + uvc.y) / 4.0));
+  float shape = t.a * inside;
+  float shade = t.r;
   float d = length(p);
   float ring = smoothstep(0.78, 0.84, d) * (1.0 - smoothstep(0.93, 0.98, d)) * vSel;
   float a = max(shape, ring);

@@ -35,6 +35,7 @@ VESSELS = {}     # mmsi -> latest position report
 STATIC = {}      # mmsi -> name, type, size, destination ...
 TRACKBUF = []    # trail points waiting to be saved
 DIRTY = set()    # mmsi whose static data changed and must be saved
+POS_DIRTY = set()  # mmsi whose position changed since the last save
 STATS = {"connected": False, "messages": 0, "positions": 0, "statics": 0, "dropped": 0, "last_message": None, "last_error": None, "refused": None}
 REFUSED_WAIT = 300           # seconds to wait after AISstream refuses us (a wrong key, say), so we never hammer them
 SNAPSHOT = {"body": b'{"ships":[],"updated":null}', "count": 0}
@@ -89,6 +90,7 @@ def handle_position(body, now_ts):
         v = VESSELS[mmsi] = {"trk": None}
     v.update({"lat": lat, "lon": lon, "sog": sog if sog is not None and sog < 102.3 else None, "cog": cog if cog is not None and cog < 360 else None,
               "hdg": hdg if hdg is not None and 0 <= hdg < 360 else None, "nav": int(nav) if nav is not None and 0 <= nav <= 15 else 15, "t": now_ts})
+    POS_DIRTY.add(mmsi)
     last = v["trk"]
     if last is None or (now_ts - last[0] >= TRACK_MIN_SECONDS and km_between(last[1], last[2], lat, lon) >= TRACK_MIN_KM):
         v["trk"] = (now_ts, lat, lon)
@@ -243,7 +245,13 @@ CREATE TABLE IF NOT EXISTS vessel_track (
   mmsi BIGINT NOT NULL, ts TIMESTAMPTZ NOT NULL, lat DOUBLE PRECISION NOT NULL, lon DOUBLE PRECISION NOT NULL, sog REAL
 );
 CREATE INDEX IF NOT EXISTS vessel_track_idx ON vessel_track (mmsi, ts);
+CREATE TABLE IF NOT EXISTS vessel_last (
+  mmsi BIGINT PRIMARY KEY, lat DOUBLE PRECISION NOT NULL, lon DOUBLE PRECISION NOT NULL, sog REAL, cog REAL, hdg REAL, nav SMALLINT, t TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS vessel_last_t_idx ON vessel_last (t);
 """
+LAST_UPSERT = """INSERT INTO vessel_last (mmsi, lat, lon, sog, cog, hdg, nav, t) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+ON CONFLICT (mmsi) DO UPDATE SET lat = EXCLUDED.lat, lon = EXCLUDED.lon, sog = EXCLUDED.sog, cog = EXCLUDED.cog, hdg = EXCLUDED.hdg, nav = EXCLUDED.nav, t = EXCLUDED.t"""
 STATIC_UPSERT = """INSERT INTO vessel_static (mmsi, name, imo, callsign, ship_type, length, beam, draught, destination, eta, updated_at)
 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
 ON CONFLICT (mmsi) DO UPDATE SET name = EXCLUDED.name, imo = EXCLUDED.imo, callsign = EXCLUDED.callsign, ship_type = EXCLUDED.ship_type, length = EXCLUDED.length,
@@ -264,10 +272,27 @@ def load_static():
     return len(rows)
 
 
+def load_positions():
+    """Put every ship heard from in the last two hours back on the map, so a restart does not empty it."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT mmsi, lat, lon, sog, cog, hdg, nav, t FROM vessel_last WHERE t > now() - make_interval(secs => %s)", (STALE_AFTER,)).fetchall()
+    n = 0
+    for r in rows:
+        if not valid_mmsi(r["mmsi"]) or r["mmsi"] in VESSELS:
+            continue
+        t = r["t"].timestamp()
+        VESSELS[r["mmsi"]] = {"lat": r["lat"], "lon": r["lon"], "sog": r["sog"], "cog": r["cog"], "hdg": r["hdg"], "nav": int(r["nav"] if r["nav"] is not None else 15),
+                              "t": t, "trk": (t, r["lat"], r["lon"])}
+        n += 1
+    return n
+
+
 def flush():
     from psycopg.types.json import Jsonb
     dirty = list(DIRTY)
     DIRTY.clear()
+    moved = [m for m in POS_DIRTY if m in VESSELS]
+    POS_DIRTY.clear()
     points = TRACKBUF[:]
     del TRACKBUF[:len(points)]
     with get_conn() as conn:
@@ -277,6 +302,9 @@ def flush():
                                                  Jsonb(s["eta"]) if s["eta"] is not None else None) for m in dirty for s in [STATIC[m]]])
             if points:
                 cur.executemany("INSERT INTO vessel_track (mmsi, ts, lat, lon, sog) VALUES (%s,%s,%s,%s,%s)", points)
+            if moved:
+                cur.executemany(LAST_UPSERT, [(m, v["lat"], v["lon"], v["sog"], v["cog"], v["hdg"], v["nav"], datetime.fromtimestamp(v["t"], tz=timezone.utc))
+                                              for m in moved for v in [VESSELS[m]]])
     return len(dirty), len(points)
 
 
@@ -284,6 +312,7 @@ def prune():
     with get_conn() as conn:
         conn.execute("DELETE FROM vessel_track WHERE ts < now() - make_interval(hours => %s)", (TRACK_KEEP_HOURS,))
         conn.execute("DELETE FROM vessel_static WHERE updated_at < now() - interval '30 days'")
+        conn.execute("DELETE FROM vessel_last WHERE t < now() - make_interval(secs => %s)", (DROP_AFTER,))
 
 
 def trail_of(mmsi, limit=150):
@@ -397,6 +426,8 @@ async def ingest_loop():
         await asyncio.to_thread(init_schema)
         n = await asyncio.to_thread(load_static)
         log.info("ships: %d ships' details loaded from the last run", n)
+        m = await asyncio.to_thread(load_positions)
+        log.info("ships: %d ships' last positions restored, so the map is not empty after a restart", m)
     except asyncio.CancelledError:
         raise
     except Exception:
