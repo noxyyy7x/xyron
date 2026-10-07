@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XYRON - Reset password</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/brand/favicon-16.png">
+<link rel="shortcut icon" href="/static/brand/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/brand/apple-touch-icon.png">
+<link rel="manifest" href="/static/brand/site.webmanifest">
+<link rel="stylesheet" href="/static/brand/brand.css">
+<link rel="stylesheet" href="/static/brand/theme.css">
+<script src="/static/brand/theme.js" defer></script>
+</head>
+<body><main>
+<h1 class="logo"><img src="/static/brand/logo-full.webp" alt="XYRON" width="260" height="239"></h1>
+<p class="sub" id="sub">Reset your password</p>
+<form id="ask" hidden>
+<label for="email">Email</label>
+<input id="email" type="email" autocomplete="username" required>
+<button type="submit">Send reset link</button>
+<div id="msg1" class="msg"></div>
+<p class="sub foot"><a href="/login">Back to sign in</a></p>
+</form>
+<form id="set" hidden>
+<p class="sub" id="who"></p>
+<label for="pw1">New password (at least 14 characters)</label>
+<input id="pw1" type="password" autocomplete="new-password" minlength="14" required>
+<label for="pw2">Repeat the new password</label>
+<input id="pw2" type="password" autocomplete="new-password" minlength="14" required>
+<label for="code">Authenticator code, or a recovery code</label>
+<input id="code" autocomplete="one-time-code" maxlength="32" required>
+<button type="submit">Set new password</button>
+<div id="msg2" class="msg"></div>
+</form>
+<div id="done" hidden>
+<p>Your password was changed and every device was signed out.</p>
+<p><a href="/login">Sign in with your new password</a></p>
+</div>
+<div id="bad" hidden>
+<p class="msg err" style="display:block">This link is invalid or has expired.</p>
+<p><a href="/reset">Ask for a new link</a></p>
+</div>
+<script src="/static/reset.js"></script>
+</main></body></html>
