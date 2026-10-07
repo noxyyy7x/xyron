@@ -1,0 +1,35 @@
+/* Search: a command-palette style box over everything. The look comes from theme.css. */
+.searchbtn { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; background: rgba(2, 8, 18, .8); color: var(--ice, #d6e8ff); border: 1px solid var(--line, #0f3c80); border-radius: 0; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; cursor: pointer; }
+.searchbtn:hover { border-color: var(--cyan, #5cc8ff); box-shadow: 0 0 12px rgba(92, 200, 255, .4); }
+.searchbtn .ico { width: 16px; height: 16px; color: var(--cyan, #5cc8ff); }
+.searchbtn kbd, #search kbd { padding: 1px 6px; border: 1px solid var(--line, #0f3c80); color: var(--dim, #6f8bb3); font-size: 9px; letter-spacing: .06em; }
+@media (max-width: 700px) { .searchbtn .lbl, .searchbtn kbd { display: none; } .searchbtn { padding: 6px 9px; } }
+
+#search { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 860; display: flex; justify-content: center; align-items: flex-start; padding-top: 11vh; }
+#search[hidden] { display: none; }
+.s-back { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(1, 3, 8, .74); backdrop-filter: blur(3px); }
+.s-box { position: relative; width: min(680px, calc(100% - 24px)); background: rgba(2, 7, 16, .98); border: 1px solid var(--blue, #2f81ff); box-shadow: 0 0 44px rgba(47, 129, 255, .32), inset 0 0 30px rgba(0, 0, 0, .6); }
+.s-box::before, .s-box::after { content: ''; position: absolute; width: 14px; height: 14px; border: 0 solid var(--cyan, #5cc8ff); filter: drop-shadow(0 0 4px var(--cyan, #5cc8ff)); }
+.s-box::before { top: -2px; left: -2px; border-top-width: 2px; border-left-width: 2px; }
+.s-box::after { bottom: -2px; right: -2px; border-bottom-width: 2px; border-right-width: 2px; }
+.s-field { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-soft, rgba(47, 129, 255, .22)); }
+.s-field .ico { width: 18px; height: 18px; flex: none; color: var(--cyan, #5cc8ff); }
+#s-input { flex: 1; min-width: 0; padding: 4px 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; color: #fff; font-size: 15px; letter-spacing: .04em; outline: none; }
+#s-input:focus { box-shadow: none; }
+.s-results { max-height: 56vh; overflow-y: auto; padding-bottom: 4px; }
+.s-group { display: flex; align-items: center; gap: 8px; padding: 12px 14px 4px; font-size: 10px; letter-spacing: .24em; color: var(--gc, #8b949e); }
+.s-group i { width: 7px; height: 7px; background: var(--gc, #8b949e); box-shadow: 0 0 8px var(--gc, #8b949e); }
+.s-group small { margin-left: auto; color: var(--dim, #6f8bb3); letter-spacing: .1em; }
+.s-item { padding: 8px 14px 8px 12px; border-left: 3px solid transparent; cursor: pointer; }
+.s-item.active { background: rgba(47, 129, 255, .14); border-left-color: var(--gc, #2f81ff); }
+.s-title { font-size: 13px; letter-spacing: .04em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-sub { margin-top: 2px; font-size: 10px; letter-spacing: .08em; color: var(--dim, #6f8bb3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-recent .s-title { color: var(--ice, #d6e8ff); }
+.s-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 14px 14px 4px; }
+.s-hint { margin-right: 4px; font-size: 10px; letter-spacing: .24em; color: var(--dim, #6f8bb3); }
+.s-chip { padding: 4px 10px; background: transparent; color: var(--ice, #d6e8ff); border: 1px solid var(--line, #0f3c80); border-radius: 0; font-size: 11px; letter-spacing: .06em; cursor: pointer; }
+.s-chip:hover { border-color: var(--cyan, #5cc8ff); box-shadow: 0 0 10px rgba(92, 200, 255, .35); }
+.s-note { margin: 0; padding: 12px 14px 14px; font-size: 11px; letter-spacing: .05em; line-height: 1.7; color: var(--dim, #6f8bb3); }
+.s-note.err { color: var(--alert, #ff2b3d); }
+.s-foot { padding: 8px 14px; border-top: 1px solid var(--line-soft, rgba(47, 129, 255, .22)); font-size: 9px; letter-spacing: .14em; color: var(--dim, #6f8bb3); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 700px) { #search { padding-top: 7vh; } .s-foot { display: none; } .s-results { max-height: 64vh; } }

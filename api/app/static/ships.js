@@ -539,6 +539,20 @@ export function init(ctx) {
   window.addEventListener('xyron-layers', (ev) => setEnabled(Array.isArray(ev.detail) && ev.detail.includes('ships')));
   setEnabled(readEnabled().has('ships'));
 
+  // the search bar asks for a ship by its MMSI number
+  window.addEventListener('xyron-select-ship', (ev) => {
+    const d = ev.detail || {};
+    const go = () => {
+      const i = meta.findIndex((s) => s[R.mmsi] === d.mmsi);
+      if (i < 0) return false;
+      select(i);
+      return true;
+    };
+    if (go()) return;
+    let tries = 0; // the layer may only just have been switched on, so wait for its first data
+    const t = setInterval(() => { if (go() || ++tries > 24) clearInterval(t); }, 500);
+  });
+
   // ----- hover card and details -----
   const shipName = (i) => meta[i][R.name] || 'MMSI ' + meta[i][R.mmsi];
   function showTip(i, x, y) {

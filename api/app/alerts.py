@@ -11,6 +11,8 @@ import logging
 import math
 import re
 import unicodedata
+from functools import lru_cache
+from pathlib import Path
 from datetime import datetime, timedelta, timezone, time as dtime
 from zoneinfo import ZoneInfo
 
@@ -20,6 +22,10 @@ from . import tgbot
 from .db import get_conn
 
 log = logging.getLogger("xyron.alerts")
+
+APP_DIR = Path(__file__).resolve().parent
+PLACES_FILE = APP_DIR / "data" / "places.json"                  # cities (ships with the search feature)
+COUNTRIES_FILE = APP_DIR / "static" / "globe" / "dots.json"      # countries (ships with the globe)
 
 CYCLE = 30                  # seconds between checks
 EVENT_KEEP_DAYS = 14
@@ -156,13 +162,29 @@ def _flag(v, name):
     return v
 
 
+def _read_json(path, default):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+@lru_cache(maxsize=1)
+def place_index():
+    """(countries, cities) as (folded name, record) pairs. Whatever data file is missing simply contributes nothing."""
+    raw = _read_json(COUNTRIES_FILE, {})
+    countries = raw.get("countries", []) if isinstance(raw, dict) else []
+    cities = _read_json(PLACES_FILE, [])
+    cities = cities if isinstance(cities, list) else []
+    return ([(fold(c["name"]), c) for c in countries if isinstance(c, dict) and "name" in c], [(fold(c["name"]), c) for c in cities if isinstance(c, dict) and "name" in c])
+
+
 def find_place(name):
     """A place by name (a city or a country), as {name, lat, lon}, or None."""
-    from . import search
     key = fold(name)
     if len(key) < 2:
         return None
-    countries, cities = search.place_index()
+    countries, cities = place_index()
     exact = [c for k, c in countries + cities if k == key]
     if exact:
         best = max(exact, key=lambda c: c.get("pop", 0))
@@ -390,10 +412,25 @@ def detect_matches(conn, now):
     return out
 
 
+_flights = {"body": None, "rows": []}
+
+
+def current_flights():
+    """The aircraft the globe is showing, read straight from the flights feed (parsed again only when it changes)."""
+    from . import aviation
+    body = aviation._snapshot.get("body")
+    if body is not _flights["body"]:
+        try:
+            _flights["rows"] = json.loads(body).get("flights") or []
+        except (ValueError, TypeError, AttributeError):
+            _flights["rows"] = []
+        _flights["body"] = body
+    return _flights["rows"]
+
+
 def detect_squawks(now):
-    from . import search
     out = []
-    for f in search.current_flights():
+    for f in current_flights():
         code = str(f[11]) if len(f) > 11 and f[11] else ""
         if code in SQUAWKS:
             p = {"icao24": f[0], "callsign": f[1], "code": code, "meaning": SQUAWKS[code], "country": f[9], "alt_m": f[4], "lat": f[2], "lon": f[3]}
@@ -696,7 +733,13 @@ def run_cycle(now=None, send=None):
     stats = {"new": 0, "queued": 0, "sent": 0}
     with get_conn() as conn:
         users = load_users(conn)
-        cands = detect_quakes(conn, now) + detect_hazards(conn, now) + detect_matches(conn, now) + detect_squawks(now)
+        cands = []
+        for name, check in (("earthquake", lambda: detect_quakes(conn, now)), ("hazard", lambda: detect_hazards(conn, now)), ("football", lambda: detect_matches(conn, now)), ("aircraft", lambda: detect_squawks(now))):
+            try:
+                with conn.transaction():  # a savepoint: if this check fails, the others (and the delivery below) carry on
+                    cands += check()
+            except Exception:
+                log.exception("alerts: the %s check failed; the other checks carry on", name)
         fresh = []
         if cands:
             # only things never seen before count as news, so enabling an alert never replays what is already going on (one query for all of them)
@@ -705,7 +748,11 @@ def run_cycle(now=None, send=None):
                                                     (list(by_key), [c["kind"] for c in by_key.values()])).fetchall()}
             fresh = [by_key[k] for k in by_key if k in added]
             conn.execute("UPDATE alert_events SET seen_at = %s WHERE key = ANY(%s) AND seen_at < %s", (now, list(by_key), now - timedelta(hours=1)))  # still being reported, so it is not forgotten (a drought can last for months)
-        fresh += detect_security(conn, now)
+        try:
+            with conn.transaction():
+                fresh += detect_security(conn, now)
+        except Exception:
+            log.exception("alerts: the security check failed; the other checks carry on")
         stats["new"] = len(fresh)
         if users:
             stats["queued"] = route_candidates(conn, users, fresh) + eval_moves(conn, users, now)

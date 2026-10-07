@@ -428,4 +428,17 @@
     s.addEventListener('mouseleave', function () { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; });
     add(el, s, tip);
   }
+  // the search bar opens an instrument by its ticker
+  window.addEventListener('xyron-open-quote', function (ev) {
+    var d = ev.detail || {};
+    if (!d.symbol) return;
+    var kind = ['crypto', 'stock', 'index', 'commodity', 'fx'].indexOf(d.kind) >= 0 ? d.kind : 'stock';
+    S.tab = kind; S.sel = null; S.q = ''; S.filter = ''; S.sort = { key: 'default', dir: 1 }; savePrefs();
+    if (S.open) render(); else open();
+    loadKind(kind).then(function () {
+      var q = (S.kinds[kind] || []).filter(function (x) { return x.symbol === d.symbol; })[0];
+      if (!S.open) return;
+      if (q) choose(q); else render(); // an instrument we do not have just shows the list
+    }).catch(function () { /* the list shows its own message */ });
+  });
 })();

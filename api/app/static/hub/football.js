@@ -463,4 +463,13 @@
     });
     add(listPane, chips, el);
   }
+  // the search bar opens a match by its ESPN number
+  window.addEventListener('xyron-open-match', function (ev) {
+    var id = ev.detail && ev.detail.id;
+    if (!id) return;
+    var mk = document.getElementById('mkt');
+    if (mk && !mk.hidden) { var mc = mk.querySelector('.mk-close'); if (mc) mc.click(); }
+    S.mode = 'football'; S.tab = 'matches'; S.sel = String(id); S.centre = null; S.centreTab = 'events';
+    if (S.open) { render(); load(); } else open();
+  });
 })();
