@@ -7,7 +7,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts, aviation, events, football, hardening, hazards, markets, news, pages, ships, sports, weather
+from . import accounts, alerts, alerts_api, aviation, events, football, hardening, hazards, markets, news, pages, ships, sports, weather
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(markets.ingest_loop()),
         asyncio.create_task(ships.ingest_loop()),
         asyncio.create_task(hazards.ingest_loop()),
+        asyncio.create_task(alerts.ingest_loop()),
     ]
     yield
     for task in tasks:
@@ -48,6 +49,7 @@ app.include_router(sports.router)
 app.include_router(football.router)
 app.include_router(markets.router)
 app.include_router(ships.router)
+app.include_router(alerts_api.router)
 pages.setup(app)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
