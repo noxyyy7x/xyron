@@ -574,6 +574,21 @@ export function init(ctx) {
   window.addEventListener('xyron-layers', (ev) => setEnabled(Array.isArray(ev.detail) && ev.detail.includes('aviation')));
   setEnabled(readEnabled().has('aviation'));
 
+  // the search bar asks for an aircraft by its ICAO24 address
+  window.addEventListener('xyron-select-flight', (ev) => {
+    const d = ev.detail || {};
+    const go = () => {
+      const i = meta.findIndex((f) => f[0] === d.icao24);
+      if (i < 0) return false;
+      select(i);
+      return true;
+    };
+    if (go()) return;
+    if (typeof d.lat === 'number' && typeof d.lon === 'number') flyTo(d.lat, d.lon, 2.4);
+    let tries = 0; // the layer may only just have been switched on, so wait for its first data
+    const t = setInterval(() => { if (go() || ++tries > 24) clearInterval(t); }, 500);
+  });
+
   // ----- hover card and details -----
   function name(i) { return meta[i][1] || meta[i][0].toUpperCase(); }
 

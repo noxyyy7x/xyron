@@ -417,7 +417,7 @@ export function init(ctx) {
   // the football hub asks the globe to fly to a stadium
   window.addEventListener('xyron-flyto', (ev) => {
     const d = ev.detail || {};
-    if (typeof d.lat === 'number' && typeof d.lon === 'number') flyTo(d.lat, d.lon, 2.2);
+    if (typeof d.lat === 'number' && typeof d.lon === 'number') flyTo(d.lat, d.lon, typeof d.zoom === 'number' ? d.zoom : 2.2);
   });
   const chipsEl = document.getElementById('layers');
   const statusEl = document.getElementById('status');
@@ -430,6 +430,20 @@ export function init(ctx) {
   sportRow.id = 'sportchips';
   sportRow.hidden = true;
   chipsEl.after(sportRow);
+
+  // the search bar can switch a layer on, so a result is never invisible
+  window.addEventListener('xyron-enable-layer', (ev) => {
+    const id = ev.detail;
+    if (typeof id !== 'string' || enabled.has(id) || !layers.some((l) => l.id === id && l.live)) return;
+    enabled.add(id);
+    saveEnabled(enabled);
+    broadcast();
+    renderChips();
+    renderSportChips();
+    rebuildMarkers();
+    renderList();
+    renderStatus();
+  });
   const bufSize = new THREE.Vector2();
   let layers = [];
   let events = [];
