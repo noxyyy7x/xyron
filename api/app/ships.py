@@ -28,6 +28,7 @@ FLUSH_EVERY = 60
 TRACK_MIN_KM = 2.0           # a trail point is kept when the ship has moved this far...
 TRACK_MIN_SECONDS = 900      # ...and at least this long has passed
 TRACK_KEEP_HOURS = 36
+TRACK_HISTORY_HOURS = 192   # tracks are kept 8 days for the time machine; the trail shown on a ship stays as it was
 MAX_SHIPS = 60000
 KNOT = 0.514444
 
@@ -310,7 +311,7 @@ def flush():
 
 def prune():
     with get_conn() as conn:
-        conn.execute("DELETE FROM vessel_track WHERE ts < now() - make_interval(hours => %s)", (TRACK_KEEP_HOURS,))
+        conn.execute("DELETE FROM vessel_track WHERE ts < now() - make_interval(hours => %s)", (max(TRACK_KEEP_HOURS, TRACK_HISTORY_HOURS),))
         conn.execute("DELETE FROM vessel_static WHERE updated_at < now() - interval '30 days'")
         conn.execute("DELETE FROM vessel_last WHERE t < now() - make_interval(secs => %s)", (DROP_AFTER,))
 

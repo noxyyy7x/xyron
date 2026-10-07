@@ -48,6 +48,21 @@ async function act(path, body) {
   }
 }
 
+async function reset2fa(u) {
+  if (!confirm('Reset the authenticator for ' + u.email + '?\n\nThey will be signed out everywhere, their recovery codes stop working, and they are emailed a one-time link to set up a new authenticator.')) return;
+  try {
+    // not the page's api() helper: that sends any "forbidden" answer to the home page, and here the reason should be shown
+    const res = await fetch('/admin/users/' + u.id + '/reset-2fa', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (res.status === 401) { location.href = '/login'; return; }
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok) { show(typeof r.detail === 'string' ? r.detail : 'Request failed', false); return; }
+    show(r.emailed ? 'Authenticator reset. A setup link was emailed to ' + u.email + '.' : 'Authenticator reset, but the setup email could not be sent. Check the mail settings.', r.emailed);
+    await load();
+  } catch (e) {
+    show('Could not reach the server.', false);
+  }
+}
+
 function render(users) {
   const isOwner = me.role === 'owner';
   const assignable = isOwner ? ['viewer', 'analyst', 'admin'] : ['viewer', 'analyst'];
@@ -79,6 +94,7 @@ function render(users) {
       actions.appendChild(button('Reactivate', '', () => act('/admin/users/' + u.id + '/reactivate')));
     } else {
       actions.appendChild(button('Suspend', 'danger', () => act('/admin/users/' + u.id + '/suspend')));
+      actions.appendChild(button('Reset 2FA', 'secondary', () => reset2fa(u)));
       if (isOwner) {
         const sel = roleSelect(assignable, u.role);
         actions.appendChild(sel);

@@ -422,6 +422,10 @@ try {
   console.error('Ships layer failed to load', e);
 }
 
+// the time machine draws on this same globe
+window.xyronGlobe = { THREE, globe, camera, renderer, canvas, flyTo };
+window.dispatchEvent(new CustomEvent('xyron-globe-ready'));
+
 // ---------- render loop ----------
 let last = performance.now();
 function frame(now) {

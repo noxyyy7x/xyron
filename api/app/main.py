@@ -7,7 +7,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-from . import accounts, alerts, alerts_api, aviation, events, football, hardening, hazards, markets, news, pages, search, ships, sports, weather
+from . import accounts, alerts, alerts_api, aviation, events, football, hardening, hazards, markets, news, pages, recovery, search, ships, sports, timemachine, weather
 from . import security as sec
 from .config import COOKIE_SECURE, DB_URL, SESSION_TTL
 from .db import audit, get_conn, init_schema
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(ships.ingest_loop()),
         asyncio.create_task(hazards.ingest_loop()),
         asyncio.create_task(alerts.ingest_loop()),
+        asyncio.create_task(timemachine.ingest_loop()),
     ]
     yield
     for task in tasks:
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="XYRON API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(accounts.router)
+app.include_router(recovery.router)
 app.middleware("http")(hardening.extra_headers)
 app.middleware("http")(hardening.body_limit)
 app.middleware("http")(hardening.origin_guard)
@@ -51,6 +53,7 @@ app.include_router(markets.router)
 app.include_router(ships.router)
 app.include_router(search.router)
 app.include_router(alerts_api.router)
+app.include_router(timemachine.router)
 pages.setup(app)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
