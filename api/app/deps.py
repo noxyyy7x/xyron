@@ -1,5 +1,6 @@
 from fastapi import Cookie, Depends, HTTPException, Request
 
+from . import hardening
 from . import security as sec
 from .db import get_conn
 
@@ -7,7 +8,7 @@ LOGIN_OK_STATUS = ("approved", "active")
 
 
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return hardening.client_ip(request)
 
 
 def current_user(xyron_session: str | None = Cookie(default=None)):
